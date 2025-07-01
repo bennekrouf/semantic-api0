@@ -33,6 +33,8 @@ pub struct ConfigurationLoadingStep {
     pub email: String,
 }
 
+// In src/analyze_sentence.rs - Update the ConfigurationLoadingStep
+
 #[async_trait]
 impl WorkflowStep for ConfigurationLoadingStep {
     async fn execute(
@@ -67,6 +69,15 @@ impl WorkflowStep for ConfigurationLoadingStep {
                 // Use the new get_default_endpoints function
                 match get_default_endpoints(api_url, &self.email).await {
                     Ok(remote_endpoints) => {
+                        // Check if we got any endpoints - FAIL EARLY if none
+                        if remote_endpoints.is_empty() {
+                            error!("No endpoints available for email: {}", self.email);
+                            return Err(format!(
+                                "No endpoints found for user '{}'. Please check your email address or contact your administrator to configure endpoints for your account.",
+                                self.email
+                            ).into());
+                        }
+
                         // Convert and store endpoints
                         let endpoints = convert_remote_endpoints(
                             // We'll need to wrap endpoints in an ApiGroup to use the converter
@@ -88,12 +99,16 @@ impl WorkflowStep for ConfigurationLoadingStep {
                     }
                     Err(e) => {
                         error!("Failed to fetch endpoints: {}", e);
-                        return Err(e);
+                        return Err(format!(
+                            "Failed to fetch endpoints from remote service: {}",
+                            e
+                        )
+                        .into());
                     }
                 }
             }
             Ok(false) | Err(_) => {
-                return Err("Remote endpoint service is unavailable".into());
+                return Err("Remote endpoint service is unavailable. Please check the service status or contact your administrator.".into());
             }
         }
 

@@ -1,20 +1,15 @@
-output: grpc
-level: info
-server_id: "semantic-service"  # Identifies this service in the logs
+output: "grpc"
+level: "info"
+server_id: "semantic-service"
 client_id: "semantic-service"
 grpc:
-  # Keep original fields for logger compatibility
   address: "0.0.0.0"
-  port: 50051 # Port where your grpc-logger server is running
-
-# Add our new server configuration
+  port: 50052
 server:
   address: "0.0.0.0"
-  port: 50053 # Port where your sentence gRPC server runs
-
-# Add endpoint client configuration
+  port: 50058
 endpoint_client:
-  default_address: "http://0.0.0.0:50055" # Default endpoint service URL if not provided via CLI
+  default_address: "http://0.0.0.0:5007"
 log_fields:
   include_thread_id: true
   include_target: true
@@ -26,14 +21,10 @@ client_retry:
   base_delay_secs: 1
   reconnect_delay_secs: 5
 log_all_messages: false
-
 debug_mode:
-  enabled: false
+  enabled: true
   test_interval_secs: 10
-  use_local_endpoints: false
-
-
-# Model configurations
+  use_local_endpoints: true
 models:
   sentence_to_json:
     ollama: "llama2:latest"
@@ -50,12 +41,10 @@ models:
     ollama: "deepseek-r1:8b"
     temperature: 0.1
     max_tokens: 500
-
-# Provider configurations
 providers:
   ollama:
     enabled: true
     host: "http://localhost:11434"
   claude:
-    enabled: false  # Will be overridden by CLI flag
-    api_key: ""     # Will be loaded from .env
+    enabled: false
+    api_key: "" # Will be loaded from .env

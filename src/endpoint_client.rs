@@ -132,7 +132,16 @@ pub async fn get_default_endpoints(
     );
 
     if all_endpoints.is_empty() {
-        warn!("Remote service returned 0 endpoints for email: {}", email);
+        error!("Remote service returned 0 endpoints for email: {}", email);
+        error!("This means either:");
+        error!("  1. No endpoints are configured for this user account");
+        error!("  2. The user email is not registered in the system");
+        error!("  3. The endpoint service has no data available");
+
+        return Err(format!(
+            "No endpoints available for user '{}'. Please verify your email address or contact your administrator.",
+            email
+        ).into());
     }
 
     Ok(all_endpoints)

@@ -191,7 +191,12 @@ impl SentenceService for SentenceAnalyzeService {
                     );
 
                     // Improved error handling: categorize errors for better client messages
-                    let status = if e
+                    let status = if e.to_string().contains("No endpoints found for user") {
+                        Status::not_found(format!(
+                            "No endpoints configured for your account ({}). Please contact your administrator to set up API endpoints for your account.",
+                            email
+                        ))
+                    } else if e
                         .to_string()
                         .contains("No endpoint configuration available")
                         || e.to_string().contains("endpoints.yaml file not found")
@@ -199,6 +204,20 @@ impl SentenceService for SentenceAnalyzeService {
                         Status::failed_precondition(format!(
                             "Endpoint configuration is not available. The endpoint service is not running and no local endpoints file was found. Please ensure either the endpoint service is running at {} or an endpoints.yaml file exists.",
                             api_url_clone.unwrap_or_else(|| "the configured URL".to_string())
+                        ))
+                    } else if e
+                        .to_string()
+                        .contains("Remote endpoint service is unavailable")
+                    {
+                        Status::unavailable(format!(
+                            "The endpoint service is currently unavailable. Please try again later or contact your administrator."
+                        ))
+                    } else if e
+                        .to_string()
+                        .contains("Failed to fetch endpoints from remote service")
+                    {
+                        Status::internal(format!(
+                            "Unable to fetch your endpoint configuration. Please check your connection or contact support."
                         ))
                     } else if e.to_string().contains("No matching endpoint found") {
                         Status::not_found(format!(
