@@ -1,5 +1,5 @@
-// src/cli.rs - Updated to make email required
-use clap::{Parser, ValueEnum};
+// src/cli.rs - Updated to use only Cohere
+use clap::Parser;
 use std::{error::Error, sync::Arc};
 use tracing::{error, info};
 
@@ -7,26 +7,15 @@ use crate::endpoint_client::get_default_api_url;
 use crate::utils::email::validate_email;
 use crate::{analyze_sentence::analyze_sentence, models::providers::ModelProvider};
 
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
-#[clap(rename_all = "lowercase")]
-pub enum ProviderType {
-    /// Use Ollama (local models)
-    Ollama,
-    /// Use Claude API (requires API key in .env)
-    Claude,
-}
-
 pub fn display_custom_help() {
-    println!("
-╭───────────────────────────────────────────────╮
+    println!(
+        "
+╭─────────────────────────────────────────────╮
 │                  Semantic                      │
 │         Natural Language API Matcher           │
-╰───────────────────────────────────────────────╯
+╰─────────────────────────────────────────────╯
 
 ARGUMENTS:
-  --provider TYPE    Select which LLM provider to use (default: claude)
-                     Options: ollama, claude
-
   --email ADDRESS    Your email address 
                      (REQUIRED ONLY when analyzing a sentence)
 
@@ -38,20 +27,20 @@ ARGUMENTS:
 
 USAGE EXAMPLES:
   1. Start gRPC server (no email required):
-     semantic --provider ollama
+     semantic
   
   2. Analyze text (email required):
      semantic --email user@example.com \"analyze this text\"
   
   3. Use remote endpoints:
-     semantic --provider claude --api http://example.com:50053 --email user@example.com \"analyze this\"
+     semantic --api http://example.com:50053 --email user@example.com \"analyze this\"
 
 For more information, use the standard help:
   semantic --help
-");
+"
+    );
 }
 
-// Update the Cli struct with a help_template override
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 #[command(help_template = "\
@@ -60,8 +49,7 @@ For more information, use the standard help:
 {about}
 
 [REQUIRED PARAMETERS]
---provider TYPE    : ollama or claude
---email ADDRESS    : valid email address
+--email ADDRESS    : valid email address (only when analyzing a sentence)
 
 {usage-heading} {usage}
 
@@ -70,10 +58,6 @@ For more information, use the standard help:
 pub struct Cli {
     /// The sentence to analyze (if not provided, starts gRPC server)
     pub prompt: Option<String>,
-
-    /// Select which LLM provider to use: 'ollama' or 'claude'
-    #[arg(long, value_enum, value_name = "TYPE", default_value = "claude")]
-    pub provider: ProviderType,
 
     /// Remote API endpoint for fetching endpoint definitions (optional)
     #[arg(long, value_name = "URL")]
@@ -118,14 +102,7 @@ pub async fn handle_cli(
             }
         };
 
-        match cli.provider {
-            ProviderType::Claude => {
-                info!("Using Claude API for analysis");
-            }
-            ProviderType::Ollama => {
-                info!("Using self-hosted Ollama models for analysis");
-            }
-        };
+        info!("Using Cohere API for analysis");
 
         // If API URL not provided in CLI, try to get default from config
         if cli.api.is_none() {
@@ -172,3 +149,4 @@ pub async fn handle_cli(
     }
     Ok(())
 }
+

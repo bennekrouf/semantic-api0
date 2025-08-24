@@ -21,30 +21,24 @@ client_retry:
   base_delay_secs: 1
   reconnect_delay_secs: 5
 log_all_messages: false
-debug_mode:
-  enabled: true
-  test_interval_secs: 10
-  use_local_endpoints: true
+
+# Model configurations using Cohere
 models:
   sentence_to_json:
-    ollama: "llama2:latest"
-    claude: "claude-3-7-sonnet-20250219"
+    cohere: "command-r7b-12-2024"
     temperature: 0.1
     max_tokens: 1000
   find_endpoint:
-    claude: "claude-3-7-sonnet-20250219"
-    ollama: "deepseek-r1:8b"
+    cohere: "command-r7b-12-2024"
     temperature: 0.1
     max_tokens: 500
   semantic_match:
-    claude: "claude-3-7-sonnet-20250219"
-    ollama: "deepseek-r1:8b"
+    cohere: "command-r7b-12-2024"
     temperature: 0.1
     max_tokens: 500
+
+# Provider configuration
 providers:
-  ollama:
+  cohere:
     enabled: true
-    host: "http://localhost:11434"
-  claude:
-    enabled: false
     api_key: "" # Will be loaded from .env

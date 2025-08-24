@@ -1,6 +1,5 @@
 // src/main.rs
 mod analyze_sentence;
-mod call_ollama;
 mod cli;
 mod endpoint_client;
 mod grpc_server;
@@ -9,12 +8,11 @@ mod models;
 mod prompts;
 mod sentence_service;
 mod utils;
-
-use std::sync::Arc;
 mod workflow;
+
 use crate::models::config::load_models_config;
 use crate::models::providers::{create_provider, ModelProvider, ProviderConfig};
-use cli::ProviderType;
+use std::sync::Arc;
 
 use clap::Parser;
 use cli::{display_custom_help, handle_cli, Cli};
@@ -29,13 +27,6 @@ use tracing::{error, info};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, Registry};
-
-#[derive(Clone)]
-pub struct AppState {
-    //provider: Arc<dyn ModelProvider>,
-    //log_config: Arc<LogConfig>,
-    //api_url: Option<String>,
-}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -54,28 +45,23 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         .init();
 
     // Parse CLI arguments
-    // In src/main.rs - Update the CLI parsing error handling
-    // Parse CLI arguments
     let cli = match Cli::try_parse() {
         Ok(cli) => cli,
         Err(e) => {
-            // Check for missing required arguments
             let error_str = e.to_string();
 
             if error_str.contains("required arguments were not provided") {
-                // Provider is now default_value = "claude", so we should only get this for other args
                 eprintln!("ERROR: Required arguments missing!");
                 eprintln!("{}", error_str);
                 eprintln!("\nNOTE: When analyzing a sentence, email is required:");
                 eprintln!("  --email user@example.com");
                 eprintln!("\nExample for starting server (no email needed):");
-                eprintln!("  cargo run -- --provider ollama");
+                eprintln!("  cargo run");
                 eprintln!("\nExample for analyzing a sentence (email required):");
-                eprintln!("  cargo run -- --provider claude --email user@example.com \"analyze this text\"");
+                eprintln!("  cargo run -- --email user@example.com \"analyze this text\"");
 
                 std::process::exit(1);
             } else {
-                // Display the original error for other issues
                 e.exit();
             }
         }
@@ -84,37 +70,21 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     // Load model configuration
     let _models_config = load_models_config().await?;
 
-    // Initialize provider based on CLI provider type
-    let use_claude = matches!(cli.provider, ProviderType::Claude);
-
-    // Create the provider
-    let provider: Box<dyn ModelProvider> = if use_claude {
-        // Load .env file and check for Claude API key
-        dotenv().ok();
-        match env::var("CLAUDE_API_KEY") {
-            Ok(api_key) => {
-                info!("Using Claude API");
-                let config = ProviderConfig {
-                    enabled: true,
-                    api_key: Some(api_key),
-                    host: None,
-                };
-                create_provider(&config).expect("Failed to create Claude provider")
-            }
-            Err(_) => {
-                error!("Claude API key not found in .env file. Please add CLAUDE_API_KEY to .env");
-                std::process::exit(1);
-            }
+    // Initialize Cohere provider
+    dotenv().ok();
+    let provider: Box<dyn ModelProvider> = match env::var("COHERE_API_KEY") {
+        Ok(api_key) => {
+            info!("Using Cohere API");
+            let config = ProviderConfig {
+                enabled: true,
+                api_key: Some(api_key),
+            };
+            create_provider(&config).expect("Failed to create Cohere provider")
         }
-    } else {
-        // Use self-hosted Ollama
-        info!("Using self-hosted Ollama");
-        let config = ProviderConfig {
-            enabled: true,
-            host: Some("http://localhost:11434".to_string()),
-            api_key: None,
-        };
-        create_provider(&config).expect("Failed to create Ollama provider")
+        Err(_) => {
+            error!("Cohere API key not found in .env file. Please add COHERE_API_KEY to .env");
+            std::process::exit(1);
+        }
     };
 
     // Wrap the provider in an Arc so we can clone it
@@ -138,12 +108,6 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         }
     };
 
-    //let app_state = AppState {
-    //    provider: provider_arc.clone(),
-    //    log_config: Arc::new(log_config),
-    //    api_url: api_url.clone(),
-    //};
-
     // Handle CLI command if present, otherwise start gRPC server
     match cli.prompt {
         Some(_) => {
@@ -152,17 +116,9 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         }
         None => {
             // Server mode - email is not needed
-            let provider_name = match cli.provider {
-                ProviderType::Claude => "Claude API",
-                ProviderType::Ollama => "Ollama self-hosted models",
-            };
-            info!(
-                "No prompt provided, starting gRPC server with {}...",
-                provider_name
-            );
+            info!("No prompt provided, starting gRPC server with Cohere API...");
 
             // Start the gRPC server with our API URL if provided
-            // Email is NOT needed for starting the server
             let grpc_server = tokio::spawn(async move {
                 if let Err(e) = start_sentence_grpc_server(provider_arc.clone(), api_url).await {
                     error!("gRPC server error: {:?}", e);
@@ -189,3 +145,4 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 
     Ok(())
 }
+

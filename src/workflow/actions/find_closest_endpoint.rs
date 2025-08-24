@@ -37,8 +37,8 @@ pub async fn find_closest_endpoint(
     let prompt = prompt_manager.format_find_endpoint(input_sentence, &actions_list, Some("v1"));
     debug!("Generated prompt:\n{}", prompt);
 
-    // Use the provider instead of calling Ollama directly
-    info!("Using provider with model: {}", model_config.name);
+    // Use the provider with the Cohere model
+    info!("Using provider with Cohere model: {}", model_config.cohere);
     let raw_response = provider.generate(&prompt, model_config).await?;
     debug!("Raw model response: '{}'", raw_response);
 
@@ -59,3 +59,4 @@ pub async fn find_closest_endpoint(
     info!("Found matching endpoint: {}", matched_endpoint.id);
     Ok(matched_endpoint)
 }
+

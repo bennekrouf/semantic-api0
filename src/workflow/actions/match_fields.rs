@@ -1,17 +1,18 @@
+use crate::json_helper::sanitize_json;
 use crate::models::config::load_models_config;
 use crate::models::Endpoint;
 use crate::prompts::PromptManager;
-use crate::json_helper::sanitize_json;
 use serde_json::Value;
 use std::error::Error;
 use tracing::debug;
 
+use crate::models::providers::ModelProvider;
 use std::sync::Arc;
- use crate::ModelProvider;
+
 pub async fn match_fields_semantic(
     input_json: &Value,
     endpoint: &Endpoint,
-    provider: Arc<dyn ModelProvider>,  // Add this parameter
+    provider: Arc<dyn ModelProvider>,
 ) -> Result<Vec<(String, String, Option<String>)>, Box<dyn Error + Send + Sync>> {
     let input_fields = input_json
         .get("endpoints")
@@ -47,12 +48,11 @@ pub async fn match_fields_semantic(
         .replace("{parameters}", &parameters);
 
     debug!("Field matching prompt:\n{}", prompt);
-    debug!("Calling Ollama for field matching");
+    debug!("Calling Cohere for field matching");
+
     // Load model configuration
     let models_config = load_models_config().await?;
     let model_config = &models_config.sentence_to_json;
-
-    // let response = call_ollama_with_config(model_config, &prompt).await?;
 
     let response = provider.generate(&prompt, model_config).await?;
 
@@ -73,9 +73,7 @@ pub async fn match_fields_semantic(
         if value.is_none() {
             if let Some(alternatives) = &param.alternatives {
                 for alt in alternatives {
-                    // Changed this line
                     if let Some(v) = input_fields.get(alt) {
-                        // Now alt is a &String
                         value = Some(v.to_string());
                         break;
                     }
@@ -95,3 +93,4 @@ pub async fn match_fields_semantic(
 
     Ok(matched_fields)
 }
+
