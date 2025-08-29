@@ -33,7 +33,7 @@ pub fn convert_remote_endpoints(
                         .map(|rp| crate::models::EndpointParameter {
                             name: rp.name,
                             description: rp.description,
-                            required: Some(rp.required),
+                            required: Some(rp.required == "true"),
                             alternatives: Some(rp.alternatives),
                             semantic_value: None,
                         })

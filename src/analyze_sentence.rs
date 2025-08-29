@@ -78,7 +78,6 @@ impl WorkflowStep for ConfigurationLoadingStep {
                             ).into());
                         }
 
-                        // Convert and store endpoints
                         let endpoints = convert_remote_endpoints(
                             // We'll need to wrap endpoints in an ApiGroup to use the converter
                             vec![endpoint::ApiGroup {
@@ -96,6 +95,25 @@ impl WorkflowStep for ConfigurationLoadingStep {
                         context.endpoints_config = Some(config);
 
                         info!("Successfully loaded {} endpoints", endpoints_len);
+                        // Log the list of available endpoints for analysis
+                        info!("Available endpoints for analysis:");
+                        if let Some(config) = &context.endpoints_config {
+                            for (i, endpoint) in config.endpoints.iter().enumerate() {
+                                info!("  {}. {} - {}", i + 1, endpoint.id, endpoint.description);
+                                debug!("     Text: '{}'", endpoint.text);
+                                if !endpoint.parameters.is_empty() {
+                                    debug!(
+                                        "     Parameters: {}",
+                                        endpoint
+                                            .parameters
+                                            .iter()
+                                            .map(|p| p.name.as_str())
+                                            .collect::<Vec<_>>()
+                                            .join(", ")
+                                    );
+                                }
+                            }
+                        }
                     }
                     Err(e) => {
                         error!("Failed to fetch endpoints: {}", e);

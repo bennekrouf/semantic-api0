@@ -150,10 +150,9 @@ pub async fn list_endpoints_for_email(
                 if !endpoint.parameters.is_empty() {
                     println!("   Parameters:");
                     for param in &endpoint.parameters {
-                        let required_text = if param.required {
-                            "required"
-                        } else {
-                            "optional"
+                        let required_text = match param.required.as_str() {
+                            "true" => "required",
+                            _ => "optional",
                         };
                         println!(
                             "     • {} ({}): {}",

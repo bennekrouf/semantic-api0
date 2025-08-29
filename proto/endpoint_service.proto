@@ -18,7 +18,7 @@ message GetApiGroupsRequest {
 message Parameter {
     string name = 1;
     string description = 2;
-    bool required = 3;
+    string required = 3;
     repeated string alternatives = 4;
 }
 
@@ -31,7 +31,6 @@ message Endpoint {
     string path = 6;
     repeated Parameter parameters = 7;
     string group_id = 8;
-    bool is_default = 9;
 }
 
 message ApiGroup {

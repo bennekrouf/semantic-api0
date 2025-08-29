@@ -28,13 +28,14 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, Registry};
 
+// In src/main.rs - Update the main function logic
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let _log_config = load_config("config.yaml")?;
 
     let args: Vec<String> = std::env::args().collect();
     if args.len() <= 1 {
-        // No arguments provided - show custom help
         display_custom_help();
         std::process::exit(0);
     }
@@ -44,12 +45,10 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         .with(EnvFilter::try_from_default_env().unwrap_or(EnvFilter::new("INFO")))
         .init();
 
-    // Parse CLI arguments
     let cli = match Cli::try_parse() {
         Ok(cli) => cli,
         Err(e) => {
             let error_str = e.to_string();
-
             if error_str.contains("required arguments were not provided") {
                 eprintln!("ERROR: Required arguments missing!");
                 eprintln!("{}", error_str);
@@ -59,7 +58,6 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
                 eprintln!("  cargo run");
                 eprintln!("\nExample for analyzing a sentence (email required):");
                 eprintln!("  cargo run -- --email user@example.com \"analyze this text\"");
-
                 std::process::exit(1);
             } else {
                 e.exit();
@@ -67,27 +65,48 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         }
     };
 
-    // Load model configuration
     let _models_config = load_models_config().await?;
 
-    // Initialize Cohere provider
     dotenv().ok();
-    let provider: Box<dyn ModelProvider> = match env::var("COHERE_API_KEY") {
-        Ok(api_key) => {
-            info!("Using Cohere API");
-            let config = ProviderConfig {
-                enabled: true,
-                api_key: Some(api_key),
-            };
-            create_provider(&config).expect("Failed to create Cohere provider")
-        }
-        Err(_) => {
-            error!("Cohere API key not found in .env file. Please add COHERE_API_KEY to .env");
+
+    let provider: Box<dyn ModelProvider> = match cli.provider.as_str() {
+        "cohere" => match env::var("COHERE_API_KEY") {
+            Ok(api_key) => {
+                info!("Using Cohere API");
+                let config = ProviderConfig {
+                    enabled: true,
+                    api_key: Some(api_key),
+                };
+                create_provider(&config, "cohere").expect("Failed to create Cohere provider")
+            }
+            Err(_) => {
+                error!("Cohere API key not found in .env file. Please add COHERE_API_KEY to .env");
+                std::process::exit(1);
+            }
+        },
+        "claude" => match env::var("CLAUDE_API_KEY") {
+            Ok(api_key) => {
+                info!("Using Claude API");
+                let config = ProviderConfig {
+                    enabled: true,
+                    api_key: Some(api_key),
+                };
+                create_provider(&config, "claude").expect("Failed to create Claude provider")
+            }
+            Err(_) => {
+                error!("Claude API key not found in .env file. Please add CLAUDE_API_KEY to .env");
+                std::process::exit(1);
+            }
+        },
+        _ => {
+            error!(
+                "Invalid provider: {}. Use 'cohere' or 'claude'",
+                cli.provider
+            );
             std::process::exit(1);
         }
     };
 
-    // Wrap the provider in an Arc so we can clone it
     let provider_arc: Arc<dyn ModelProvider> = Arc::from(provider);
 
     // Get API URL from CLI or config
@@ -95,7 +114,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         Some(url)
     } else {
         // Only get default if we're not in CLI prompt mode
-        if cli.prompt.is_none() {
+        if cli.prompt.is_none() && !cli.list_endpoints {
             match get_default_api_url().await {
                 Ok(url) => Some(url),
                 Err(e) => {
@@ -108,41 +127,35 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         }
     };
 
-    // Handle CLI command if present, otherwise start gRPC server
-    match cli.prompt {
-        Some(_) => {
-            // CLI mode with a prompt - email is required and validated in handle_cli
-            handle_cli(cli, provider_arc).await?;
-        }
-        None => {
-            // Server mode - email is not needed
-            info!("No prompt provided, starting gRPC server with Cohere API...");
+    // FIXED: Check for CLI commands first, then default to server mode
+    if cli.list_endpoints || cli.prompt.is_some() {
+        // CLI mode - handle the command and exit
+        handle_cli(cli, provider_arc).await?;
+    } else {
+        // Server mode - email is not needed
+        info!("No command provided, starting gRPC server...");
 
-            // Start the gRPC server with our API URL if provided
-            let grpc_server = tokio::spawn(async move {
-                if let Err(e) = start_sentence_grpc_server(provider_arc.clone(), api_url).await {
-                    error!("gRPC server error: {:?}", e);
-                }
-            });
+        let grpc_server = tokio::spawn(async move {
+            if let Err(e) = start_sentence_grpc_server(provider_arc.clone(), api_url).await {
+                error!("gRPC server error: {:?}", e);
+            }
+        });
 
-            info!("Semantic server started");
+        info!("Semantic server started");
 
-            // Wait for CTRL-C
-            tokio::select! {
-                _ = signal::ctrl_c() => {
-                    info!("Received shutdown signal, initiating graceful shutdown...");
-                }
-                result = grpc_server => {
-                    if let Err(e) = result {
-                        error!("gRPC server task error: {:?}", e);
-                    }
+        tokio::select! {
+            _ = signal::ctrl_c() => {
+                info!("Received shutdown signal, initiating graceful shutdown...");
+            }
+            result = grpc_server => {
+                if let Err(e) = result {
+                    error!("gRPC server task error: {:?}", e);
                 }
             }
-
-            info!("Server shutting down");
         }
+
+        info!("Server shutting down");
     }
 
     Ok(())
 }
-

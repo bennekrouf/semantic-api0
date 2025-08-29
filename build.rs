@@ -18,4 +18,3 @@ fn main() {
         .compile_protos(&["proto/sentence_service.proto"], &["proto"])
         .unwrap_or_else(|e| panic!("Failed to compile sentence proto files: {}", e));
 }
-
