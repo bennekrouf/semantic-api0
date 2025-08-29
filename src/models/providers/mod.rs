@@ -3,6 +3,7 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use std::error::Error;
 
+pub mod claude;
 pub mod cohere;
 
 #[async_trait]
@@ -23,7 +24,9 @@ pub struct ProviderConfig {
 #[derive(Debug, Deserialize, Clone, Default)]
 pub struct ModelConfig {
     #[serde(default)]
-    pub cohere: String, // Cohere model name
+    pub cohere: String,
+    #[serde(default)]
+    pub claude: String,
     pub temperature: f32,
     pub max_tokens: u32,
 }
@@ -35,15 +38,21 @@ pub struct ModelsConfig {
     pub semantic_match: ModelConfig,
 }
 
-pub fn create_provider(config: &ProviderConfig) -> Option<Box<dyn ModelProvider>> {
+pub fn create_provider(
+    config: &ProviderConfig,
+    provider_type: &str,
+) -> Option<Box<dyn ModelProvider>> {
     if !config.enabled {
         return None;
     }
 
     if config.api_key.is_some() {
-        Some(Box::new(cohere::CohereProvider::new(config)))
+        match provider_type {
+            "cohere" => Some(Box::new(cohere::CohereProvider::new(config))),
+            "claude" => Some(Box::new(claude::ClaudeProvider::new(config))),
+            _ => None,
+        }
     } else {
         None
     }
 }
-
