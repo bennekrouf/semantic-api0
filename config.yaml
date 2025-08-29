@@ -48,3 +48,8 @@ providers:
   claude:
     enabled: true
     api_key: "" # Will be loaded from .env
+service:
+  name: semantic
+  version: 1.0.0
+  provider: cohere
+  api: "http://127.0.0.1:50057"
