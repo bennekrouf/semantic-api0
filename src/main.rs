@@ -32,7 +32,8 @@ use tracing_subscriber::{EnvFilter, Registry};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
-    let _log_config = load_config("config.yaml")?;
+    let config_path = std::env::var("CONFIG_PATH").unwrap_or_else(|_| "config.yaml".to_string());
+    let _log_config = load_config(&config_path)?;
 
     let args: Vec<String> = std::env::args().collect();
     if args.len() <= 1 {

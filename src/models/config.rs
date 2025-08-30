@@ -4,7 +4,11 @@ use serde::Deserialize;
 use std::error::Error;
 use tracing::debug;
 
-// use super::ConfigFile;
+use std::env;
+
+fn get_config_path() -> String {
+    env::var("CONFIG_PATH").unwrap_or_else(|_| "config.yaml".to_string())
+}
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Providers {}
@@ -38,30 +42,24 @@ pub struct DebugConfig {
 }
 
 pub async fn load_models_config() -> Result<ModelsConfig, Box<dyn Error + Send + Sync>> {
-    let config_str = tokio::fs::read_to_string("config.yaml").await?;
+    let config_path = get_config_path();
+    let config_str = tokio::fs::read_to_string(&config_path).await?;
     let config: Config = serde_yaml::from_str(&config_str)?;
 
-    debug!("Loaded models configuration: {:#?}", config.models);
+    debug!("Loaded models configuration from: {}", config_path);
+    debug!("Models config: {:#?}", config.models);
 
     Ok(config.models)
 }
 
-// pub async fn is_debug_mode_with_local_endpoints() -> Result<bool, Box<dyn Error + Send + Sync>> {
-//     let config_str = tokio::fs::read_to_string("config.yaml").await?;
-//     let config: Config = serde_yaml::from_str(&config_str)?;
-//
-//     Ok(config
-//         .debug_mode
-//         .map(|debug| debug.enabled && debug.use_local_endpoints)
-//         .unwrap_or(false))
-// }
-
 // Load server configuration from config file
 pub async fn load_server_config() -> Result<ServerConfig, Box<dyn Error + Send + Sync>> {
-    let config_str = tokio::fs::read_to_string("config.yaml").await?;
+    let config_path = get_config_path();
+    let config_str = tokio::fs::read_to_string(&config_path).await?;
     let config: Config = serde_yaml::from_str(&config_str)?;
 
-    debug!("Loaded server configuration: {:#?}", config.server);
+    debug!("Loaded server configuration from: {}", config_path);
+    debug!("Server config: {:#?}", config.server);
 
     Ok(config.server)
 }
@@ -69,13 +67,12 @@ pub async fn load_server_config() -> Result<ServerConfig, Box<dyn Error + Send +
 // Load endpoint client configuration from config file
 pub async fn load_endpoint_client_config(
 ) -> Result<EndpointClientConfig, Box<dyn Error + Send + Sync>> {
-    let config_str = tokio::fs::read_to_string("config.yaml").await?;
+    let config_path = get_config_path();
+    let config_str = tokio::fs::read_to_string(&config_path).await?;
     let config: Config = serde_yaml::from_str(&config_str)?;
 
-    debug!(
-        "Loaded endpoint client configuration: {:#?}",
-        config.endpoint_client
-    );
+    debug!("Loaded endpoint client configuration from: {}", config_path);
+    debug!("Endpoint client config: {:#?}", config.endpoint_client);
 
     Ok(config.endpoint_client)
 }

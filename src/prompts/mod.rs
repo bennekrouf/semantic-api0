@@ -25,7 +25,8 @@ pub struct PromptManager {
 
 impl PromptManager {
     pub async fn new() -> Result<Self, Box<dyn Error + Send + Sync>> {
-        let config_str = tokio::fs::read_to_string("prompts.yaml").await?;
+        let prompts_path = env::var("PROMPTS_PATH").unwrap_or_else(|_| "prompts.yaml".to_string());
+        let config_str = tokio::fs::read_to_string(&prompts_path).await?;
         let config: PromptConfig = serde_yaml::from_str(&config_str)?;
         Ok(Self { config })
     }
