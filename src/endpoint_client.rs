@@ -14,34 +14,34 @@ pub async fn get_default_api_url() -> Result<String, Box<dyn Error + Send + Sync
 }
 
 // Convert gRPC Endpoint to our internal Endpoint structure
-pub fn convert_remote_endpoints(
-    api_groups: Vec<endpoint::ApiGroup>,
-) -> Vec<crate::models::Endpoint> {
-    api_groups
-        .into_iter()
-        .flat_map(|group| {
-            group
-                .endpoints
-                .into_iter()
-                .map(move |re| crate::models::Endpoint {
-                    id: re.id,
-                    text: re.text,
-                    description: re.description,
-                    parameters: re
-                        .parameters
-                        .into_iter()
-                        .map(|rp| crate::models::EndpointParameter {
-                            name: rp.name,
-                            description: rp.description,
-                            required: Some(rp.required == "true"),
-                            alternatives: Some(rp.alternatives),
-                            semantic_value: None,
-                        })
-                        .collect(),
-                })
-        })
-        .collect()
-}
+// pub fn convert_remote_endpoints(
+//     api_groups: Vec<endpoint::ApiGroup>,
+// ) -> Vec<crate::models::Endpoint> {
+//     api_groups
+//         .into_iter()
+//         .flat_map(|group| {
+//             group
+//                 .endpoints
+//                 .into_iter()
+//                 .map(move |re| crate::models::Endpoint {
+//                     id: re.id,
+//                     text: re.text,
+//                     description: re.description,
+//                     parameters: re
+//                         .parameters
+//                         .into_iter()
+//                         .map(|rp| crate::models::EndpointParameter {
+//                             name: rp.name,
+//                             description: rp.description,
+//                             required: Some(rp.required == "true"),
+//                             alternatives: Some(rp.alternatives),
+//                             semantic_value: None,
+//                         })
+//                         .collect(),
+//                 })
+//         })
+//         .collect()
+// }
 
 /// Check if the endpoint service is available
 pub async fn check_endpoint_service_health(
@@ -145,4 +145,86 @@ pub async fn get_default_endpoints(
     }
 
     Ok(all_endpoints)
+}
+
+pub fn convert_remote_endpoints_enhanced(
+    api_groups: Vec<endpoint::ApiGroup>,
+) -> Vec<crate::models::EnhancedEndpoint> {
+    api_groups
+        .into_iter()
+        .flat_map(|group| {
+            group
+                .endpoints
+                .into_iter()
+                .map(move |re| crate::models::EnhancedEndpoint {
+                    id: re.id,
+                    name: re.text.clone(),
+                    text: re.text,
+                    description: re.description,
+                    verb: re.verb,
+                    base: re.base,
+                    path: re.path.clone(),
+                    essential_path: extract_essential_path(&re.path),
+                    api_group_id: group.id.clone(),
+                    api_group_name: group.name.clone(),
+                    parameters: re
+                        .parameters
+                        .into_iter()
+                        .map(|rp| crate::models::EndpointParameter {
+                            name: rp.name,
+                            description: rp.description,
+                            required: Some(rp.required == "true"),
+                            alternatives: Some(rp.alternatives),
+                            semantic_value: None,
+                        })
+                        .collect(),
+                })
+        })
+        .collect()
+}
+
+fn extract_essential_path(path: &str) -> String {
+    let essential = path
+        .split('/')
+        .filter(|segment| !segment.starts_with('{') || !segment.ends_with('}'))
+        .collect::<Vec<&str>>()
+        .join("/");
+
+    if essential.is_empty() {
+        "/".to_string()
+    } else {
+        essential
+    }
+}
+
+pub async fn get_enhanced_endpoints(
+    addr: &str,
+    email: &str,
+) -> Result<Vec<crate::models::EnhancedEndpoint>, Box<dyn Error + Send + Sync>> {
+    let channel = Channel::from_shared(addr.to_string())?
+        .connect_timeout(std::time::Duration::from_secs(5))
+        .timeout(std::time::Duration::from_secs(10))
+        .connect()
+        .await?;
+
+    let mut client = EndpointServiceClient::new(channel);
+    let request = tonic::Request::new(GetApiGroupsRequest {
+        email: email.to_string(),
+    });
+
+    let response = client.get_api_groups(request).await?;
+    let mut stream = response.into_inner();
+    let mut api_groups = Vec::new();
+
+    while let Some(response) = stream.message().await? {
+        api_groups.extend(response.api_groups);
+    }
+
+    let enhanced_endpoints = convert_remote_endpoints_enhanced(api_groups);
+
+    if enhanced_endpoints.is_empty() {
+        return Err(format!("No endpoints available for user '{}'", email).into());
+    }
+
+    Ok(enhanced_endpoints)
 }

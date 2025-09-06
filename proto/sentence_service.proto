@@ -4,6 +4,7 @@ package sentence;
 
 service SentenceService {
   rpc AnalyzeSentence (SentenceRequest) returns (stream SentenceResponse) {}
+  rpc SendMessage (MessageRequest) returns (MessageResponse) {}  // Add this line
 }
 
 message SentenceRequest {
@@ -18,7 +19,24 @@ message Parameter {
 
 message SentenceResponse {
   string endpoint_id = 1;
-  string endpoint_description = 2;
-  repeated Parameter parameters = 3;
-  string json_output = 4;
+  optional string endpoint_name = 2;
+  string endpoint_description = 3;
+  optional string verb = 4;
+  optional string base = 5;
+  optional string path = 6;
+  optional string essential_path = 7;
+  optional string api_group_id = 8;
+  optional string api_group_name = 9;
+  repeated Parameter parameters = 10;
+  string json_output = 11;
 }
+
+message MessageRequest {
+  string message = 1;
+}
+
+message MessageResponse {
+  string response = 1;
+  bool success = 2;
+}
+

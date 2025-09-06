@@ -1,212 +1,150 @@
-use crate::endpoint_client::endpoint;
-use crate::endpoint_client::{check_endpoint_service_health, convert_remote_endpoints};
-// use crate::models::config::is_debug_mode_with_local_endpoints;
-use crate::endpoint_client::get_default_endpoints;
-use crate::models::config::load_models_config;
+use crate::endpoint_client::{check_endpoint_service_health, get_enhanced_endpoints};
+use crate::general_question_handler::handle_general_question;
 use crate::models::providers::ModelProvider;
-use crate::models::ConfigFile;
-use crate::models::EndpointParameter;
+use crate::models::{EnhancedAnalysisResult, ParameterMatch};
 use crate::utils::email::validate_email;
+use crate::workflow::classify_intent::{classify_intent, IntentType};
 use crate::workflow::find_closest_endpoint::find_closest_endpoint;
 use crate::workflow::match_fields::match_fields_semantic;
 use crate::workflow::sentence_to_json::sentence_to_json;
-use crate::workflow::WorkflowEngine;
-use crate::workflow::WorkflowStep;
-use crate::workflow::{WorkflowConfig, WorkflowContext};
-use serde_json::Value;
-use std::error::Error;
-use tracing::{debug, error, info};
-
-pub struct AnalysisResult {
-    pub json_output: Value,
-    pub endpoint_id: String,
-    pub endpoint_description: String,
-    pub parameters: Vec<EndpointParameter>,
-}
+use crate::workflow::{WorkflowConfig, WorkflowContext, WorkflowEngine, WorkflowStep};
 
 use async_trait::async_trait;
+use std::error::Error;
 use std::sync::Arc;
+use tracing::{error, info};
 
-// Step 2: Define each workflow step
-pub struct ConfigurationLoadingStep {
+// Enhanced configuration loading step that extends the existing workflow
+pub struct EnhancedConfigurationLoadingStep {
     pub api_url: Option<String>,
     pub email: String,
 }
 
-// In src/analyze_sentence.rs - Update the ConfigurationLoadingStep
-
 #[async_trait]
-impl WorkflowStep for ConfigurationLoadingStep {
+impl WorkflowStep for EnhancedConfigurationLoadingStep {
     async fn execute(
         &self,
         context: &mut WorkflowContext,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        info!("Loading configurations from remote endpoint service");
+        info!("Loading enhanced configurations with complete endpoint metadata");
 
-        // Validate email - fail early if invalid
         if self.email.is_empty() {
             return Err("Email is required and cannot be empty".into());
         }
 
-        if let Err(e) = validate_email(&self.email) {
-            error!("ERROR: {}", e);
-            error!("Please provide a valid email address in the format user@example.com");
-            error!("\nExample:");
-            error!("  cargo run -- --provider ollama --email user@example.com");
-            std::process::exit(1);
-        }
-
-        // Set email in context
+        validate_email(&self.email)?;
         context.email = Some(self.email.clone());
-        // Ensure API URL is provided
+
         let api_url = self.api_url.as_ref().ok_or("No API URL provided")?;
 
-        // First verify the service is available
         match check_endpoint_service_health(api_url).await {
             Ok(true) => {
-                info!("Remote endpoint service is available, fetching endpoints");
+                info!("Remote endpoint service available, fetching enhanced endpoints");
 
-                // Use the new get_default_endpoints function
-                match get_default_endpoints(api_url, &self.email).await {
-                    Ok(remote_endpoints) => {
-                        // Check if we got any endpoints - FAIL EARLY if none
-                        if remote_endpoints.is_empty() {
-                            error!("No endpoints available for email: {}", self.email);
+                match get_enhanced_endpoints(api_url, &self.email).await {
+                    Ok(enhanced_endpoints) => {
+                        if enhanced_endpoints.is_empty() {
                             return Err(format!(
-                                "No endpoints found for user '{}'. Please check your email address or contact your administrator to configure endpoints for your account.",
+                                "No endpoints found for user '{}'. Contact administrator.",
                                 self.email
-                            ).into());
+                            )
+                            .into());
                         }
 
-                        let endpoints = convert_remote_endpoints(
-                            // We'll need to wrap endpoints in an ApiGroup to use the converter
-                            vec![endpoint::ApiGroup {
-                                id: "default".to_string(),
-                                name: "Default Group".to_string(),
-                                description: "Default API Group".to_string(),
-                                base: "".to_string(),
-                                endpoints: remote_endpoints,
-                            }],
+                        // Convert enhanced endpoints to regular endpoints for workflow compatibility
+                        let regular_endpoints: Vec<crate::models::Endpoint> = enhanced_endpoints
+                            .iter()
+                            .map(|e| crate::models::Endpoint {
+                                id: e.id.clone(),
+                                text: e.text.clone(),
+                                description: e.description.clone(),
+                                parameters: e.parameters.clone(),
+                            })
+                            .collect();
+
+                        context.endpoints_config = Some(crate::models::ConfigFile {
+                            endpoints: regular_endpoints,
+                        });
+
+                        // Store enhanced endpoints for later use
+                        context.enhanced_endpoints = Some(enhanced_endpoints);
+
+                        info!(
+                            "Successfully loaded {} enhanced endpoints",
+                            context.enhanced_endpoints.as_ref().unwrap().len()
                         );
-
-                        let endpoints_len = endpoints.len();
-
-                        let config = ConfigFile { endpoints };
-                        context.endpoints_config = Some(config);
-
-                        info!("Successfully loaded {} endpoints", endpoints_len);
-                        // Log the list of available endpoints for analysis
-                        info!("Available endpoints for analysis:");
-                        if let Some(config) = &context.endpoints_config {
-                            for (i, endpoint) in config.endpoints.iter().enumerate() {
-                                info!("  {}. {} - {}", i + 1, endpoint.id, endpoint.description);
-                                debug!("     Text: '{}'", endpoint.text);
-                                if !endpoint.parameters.is_empty() {
-                                    debug!(
-                                        "     Parameters: {}",
-                                        endpoint
-                                            .parameters
-                                            .iter()
-                                            .map(|p| p.name.as_str())
-                                            .collect::<Vec<_>>()
-                                            .join(", ")
-                                    );
-                                }
-                            }
-                        }
                     }
                     Err(e) => {
-                        error!("Failed to fetch endpoints: {}", e);
-                        return Err(format!(
-                            "Failed to fetch endpoints from remote service: {}",
-                            e
-                        )
-                        .into());
+                        return Err(format!("Failed to fetch enhanced endpoints: {}", e).into());
                     }
                 }
             }
             Ok(false) | Err(_) => {
-                return Err("Remote endpoint service is unavailable. Please check the service status or contact your administrator.".into());
+                return Err("Remote endpoint service is unavailable".into());
             }
         }
 
-        // Load model configurations
-        let models_config = load_models_config().await?;
+        // Load model configurations (existing functionality)
+        let models_config = crate::models::config::load_models_config().await?;
         context.models_config = Some(models_config);
 
         Ok(())
     }
 
     fn name(&self) -> &'static str {
-        "configuration_loading"
+        "enhanced_configuration_loading"
     }
 }
 
-// Step 2.2: JSON Generation Step
+// Reuse existing workflow steps
 pub struct JsonGenerationStep;
+pub struct EndpointMatchingStep;
+pub struct FieldMatchingStep;
 
 #[async_trait]
 impl WorkflowStep for JsonGenerationStep {
     async fn execute(
         &self,
-        context: &mut crate::workflow::context::WorkflowContext,
+        context: &mut WorkflowContext,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        info!("Generating JSON from sentence");
-
         let json_result = sentence_to_json(&context.sentence, context.provider.clone()).await?;
         context.json_output = Some(json_result);
-
-        debug!("JSON generation successful");
         Ok(())
     }
-
     fn name(&self) -> &'static str {
         "json_generation"
     }
 }
 
-// Step 2.3: Endpoint Matching Step
-pub struct EndpointMatchingStep;
-
 #[async_trait]
 impl WorkflowStep for EndpointMatchingStep {
     async fn execute(
         &self,
-        context: &mut crate::workflow::context::WorkflowContext,
+        context: &mut WorkflowContext,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        info!("Finding closest matching endpoint");
-
         let config = context
             .endpoints_config
             .as_ref()
-            .ok_or("Endpoints configuration not loaded")?;
-
+            .ok_or("Endpoints config not loaded")?;
         let endpoint_result =
             find_closest_endpoint(config, &context.sentence, context.provider.clone()).await?;
+
         context.endpoint_id = Some(endpoint_result.id.clone());
         context.endpoint_description = Some(endpoint_result.description.clone());
         context.matched_endpoint = Some(endpoint_result);
-
-        debug!("Endpoint matching successful");
         Ok(())
     }
-
     fn name(&self) -> &'static str {
         "endpoint_matching"
     }
 }
 
-// Step 2.4: Field Matching Step
-pub struct FieldMatchingStep;
-
 #[async_trait]
 impl WorkflowStep for FieldMatchingStep {
     async fn execute(
         &self,
-        context: &mut crate::workflow::context::WorkflowContext,
+        context: &mut WorkflowContext,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        info!("Performing field matching");
-
         let json_output = context
             .json_output
             .as_ref()
@@ -219,8 +157,7 @@ impl WorkflowStep for FieldMatchingStep {
         let semantic_results =
             match_fields_semantic(json_output, endpoint, context.provider.clone()).await?;
 
-        // Convert semantic results to parameters
-        let parameters: Vec<EndpointParameter> = endpoint
+        let parameters: Vec<crate::models::EndpointParameter> = endpoint
             .parameters
             .iter()
             .map(|param| {
@@ -229,7 +166,7 @@ impl WorkflowStep for FieldMatchingStep {
                     .find(|(name, _, _)| name == &param.name)
                     .and_then(|(_, _, value)| value.clone());
 
-                EndpointParameter {
+                crate::models::EndpointParameter {
                     name: param.name.clone(),
                     description: param.description.clone(),
                     semantic_value,
@@ -240,116 +177,165 @@ impl WorkflowStep for FieldMatchingStep {
             .collect();
 
         context.parameters = parameters;
-
-        debug!("Field matching completed");
         Ok(())
     }
-
     fn name(&self) -> &'static str {
         "field_matching"
     }
 }
 
-// Step 3: Workflow Configuration (unchanged)
-const WORKFLOW_CONFIG: &str = r#"
+// Enhanced analysis function with intent classification
+pub async fn analyze_sentence_enhanced(
+    sentence: &str,
+    provider: Arc<dyn ModelProvider>,
+    api_url: Option<String>,
+    email: &str,
+) -> Result<EnhancedAnalysisResult, Box<dyn Error + Send + Sync>> {
+    if email.is_empty() {
+        return Err("Email is required".into());
+    }
+    validate_email(email)?;
+    info!(
+        "Starting enhanced sentence analysis using workflow engine for: {}",
+        sentence
+    );
+
+    // First, get available endpoints to classify intent
+    let api_url_ref = api_url.as_ref().ok_or("No API URL provided")?;
+    let enhanced_endpoints = get_enhanced_endpoints(api_url_ref, email).await?;
+    let endpoint_descriptions: Vec<String> = enhanced_endpoints
+        .iter()
+        .map(|e| e.description.clone())
+        .collect();
+
+    // Classify intent first
+    let intent = classify_intent(sentence, &endpoint_descriptions, provider.clone()).await?;
+
+    match intent {
+        IntentType::ActionableRequest => {
+            info!("Processing as actionable request - running full workflow");
+
+            // Run the full workflow for actionable requests
+            const ENHANCED_WORKFLOW_CONFIG: &str = r#"
 steps:
-  - name: configuration_loading
+  - name: enhanced_configuration_loading
     enabled: true
     retry:
       max_attempts: 3
       delay_ms: 1000
-    timeout_secs: 10
   - name: json_generation
     enabled: true
     retry:
       max_attempts: 3
       delay_ms: 1000
-    timeout_secs: 30
   - name: endpoint_matching
     enabled: true
     retry:
       max_attempts: 2
       delay_ms: 500
-    timeout_secs: 20
   - name: field_matching
     enabled: true
     retry:
       max_attempts: 2
       delay_ms: 500
-    timeout_secs: 20
 "#;
 
-// Step 4: Updated analyze_sentence function with API URL parameter
-pub async fn analyze_sentence(
-    sentence: &str,
-    provider: Arc<dyn ModelProvider>,
-    api_url: Option<String>,
-    email: &str,
-) -> Result<AnalysisResult, Box<dyn Error + Send + Sync>> {
-    // Validate email before proceeding
-    if email.is_empty() {
-        return Err("Email is required and cannot be empty".into());
-    }
+            let config: WorkflowConfig = serde_yaml::from_str(ENHANCED_WORKFLOW_CONFIG)?;
+            let mut engine = WorkflowEngine::new();
 
-    // Validate email format
-    let email_regex = regex::Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
-        .expect("Invalid email regex pattern");
-
-    if !email_regex.is_match(email) {
-        return Err(format!("Invalid email format: {}", email).into());
-    }
-
-    info!("Starting sentence analysis for: {}", sentence);
-    info!("Using email: {}", email);
-
-    if let Some(url) = &api_url {
-        info!("Using remote API for endpoints: {}", url);
-    } else {
-        info!("Using local endpoints file");
-    }
-
-    // Initialize workflow engine
-    let config: WorkflowConfig = serde_yaml::from_str(WORKFLOW_CONFIG)?;
-    let mut engine = WorkflowEngine::new();
-
-    // Register all steps
-    for step_config in config.steps {
-        match step_config.name.as_str() {
-            "configuration_loading" => {
-                engine.register_step(
-                    step_config,
-                    Arc::new(ConfigurationLoadingStep {
-                        api_url: api_url.clone(),
-                        email: email.to_string(),
-                    }),
-                );
+            // Register all workflow steps
+            for step_config in config.steps {
+                match step_config.name.as_str() {
+                    "enhanced_configuration_loading" => {
+                        engine.register_step(
+                            step_config,
+                            Arc::new(EnhancedConfigurationLoadingStep {
+                                api_url: api_url.clone(),
+                                email: email.to_string(),
+                            }),
+                        );
+                    }
+                    "json_generation" => {
+                        engine.register_step(step_config, Arc::new(JsonGenerationStep));
+                    }
+                    "endpoint_matching" => {
+                        engine.register_step(step_config, Arc::new(EndpointMatchingStep));
+                    }
+                    "field_matching" => {
+                        engine.register_step(step_config, Arc::new(FieldMatchingStep));
+                    }
+                    _ => {
+                        error!("Unknown step: {}", step_config.name);
+                        return Err(format!("Unknown step: {}", step_config.name).into());
+                    }
+                }
             }
-            "json_generation" => {
-                engine.register_step(step_config, Arc::new(JsonGenerationStep));
-            }
-            "endpoint_matching" => {
-                engine.register_step(step_config, Arc::new(EndpointMatchingStep));
-            }
-            "field_matching" => {
-                engine.register_step(step_config, Arc::new(FieldMatchingStep));
-            }
-            _ => {
-                error!("Unknown step: {}", step_config.name);
-                return Err(format!("Unknown step: {}", step_config.name).into());
-            }
+
+            // Execute the workflow
+            let context = engine.execute(sentence.to_string(), provider).await?;
+
+            // Extract enhanced endpoint data from context
+            let enhanced_endpoint = context
+                .enhanced_endpoints
+                .as_ref()
+                .and_then(|endpoints| {
+                    endpoints
+                        .iter()
+                        .find(|e| context.endpoint_id.as_ref().map_or(false, |id| e.id == *id))
+                })
+                .ok_or("Enhanced endpoint data not found")?;
+
+            // Build parameter matches from workflow results
+            let parameter_matches: Vec<ParameterMatch> = context
+                .parameters
+                .into_iter()
+                .map(|param| ParameterMatch {
+                    name: param.name,
+                    description: param.description,
+                    value: param.semantic_value,
+                })
+                .collect();
+
+            // Return enhanced result with complete endpoint metadata
+            Ok(EnhancedAnalysisResult {
+                endpoint_id: enhanced_endpoint.id.clone(),
+                endpoint_name: enhanced_endpoint.name.clone(),
+                endpoint_description: enhanced_endpoint.description.clone(),
+                verb: enhanced_endpoint.verb.clone(),
+                base: enhanced_endpoint.base.clone(),
+                path: enhanced_endpoint.path.clone(),
+                essential_path: enhanced_endpoint.essential_path.clone(),
+                api_group_id: enhanced_endpoint.api_group_id.clone(),
+                api_group_name: enhanced_endpoint.api_group_name.clone(),
+                parameters: parameter_matches,
+                raw_json: context.json_output.ok_or("JSON output not available")?,
+            })
+        }
+
+        IntentType::GeneralQuestion => {
+            info!("Processing as general question - generating conversational response");
+
+            // Handle general questions with a simple response
+            let conversational_response = handle_general_question(sentence, provider).await?;
+
+            // Return a mock EnhancedAnalysisResult for general conversations
+            Ok(EnhancedAnalysisResult {
+                endpoint_id: "general_conversation".to_string(),
+                endpoint_name: "General Conversation".to_string(),
+                endpoint_description: "Conversational response to general question".to_string(),
+                verb: "GET".to_string(),
+                base: "conversation".to_string(),
+                path: "/general".to_string(),
+                essential_path: "/general".to_string(),
+                api_group_id: "conversation".to_string(),
+                api_group_name: "Conversation API".to_string(),
+                parameters: vec![], // No parameters for general questions
+                raw_json: serde_json::json!({
+                    "type": "general_conversation",
+                    "response": conversational_response,
+                    "intent": "general_question"
+                }),
+            })
         }
     }
-
-    // Execute workflow
-    let context = engine.execute(sentence.to_string(), provider).await?;
-
-    // Convert workflow context to analysis result
-    Ok(AnalysisResult {
-        json_output: context.json_output.ok_or("JSON output not available")?,
-        endpoint_id: context.endpoint_id.ok_or("Endpoint ID not available")?,
-        endpoint_description: context
-            .endpoint_description
-            .ok_or("Endpoint description not available")?,
-        parameters: context.parameters,
-    })
 }

@@ -30,8 +30,8 @@ struct ClaudeResponse {
 
 #[derive(Debug, Deserialize)]
 struct ContentItem {
-    #[serde(rename = "type")]
-    content_type: String,
+    // #[serde(rename = "type")]
+    // content_type: String,
     text: String,
 }
 
@@ -107,4 +107,3 @@ impl ModelProvider for ClaudeProvider {
         Ok(content)
     }
 }
-

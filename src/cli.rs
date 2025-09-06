@@ -5,7 +5,7 @@ use tracing::{error, info};
 
 use crate::endpoint_client::get_default_api_url;
 use crate::utils::email::validate_email;
-use crate::{analyze_sentence::analyze_sentence, models::providers::ModelProvider};
+use crate::{analyze_sentence::analyze_sentence_enhanced, models::providers::ModelProvider};
 
 pub fn display_custom_help() {
     println!(
@@ -263,7 +263,7 @@ pub async fn handle_cli(
         info!("Analyzing prompt via CLI: {}", prompt);
 
         // Pass the API URL and email to analyze_sentence
-        let result = analyze_sentence(&prompt, provider, cli.api, &email).await?;
+        let result = analyze_sentence_enhanced(&prompt, provider, cli.api, &email).await?;
 
         println!("\nAnalysis Results:");
         println!(
@@ -273,13 +273,13 @@ pub async fn handle_cli(
         println!("\nParameters:");
         for param in result.parameters {
             println!("\n{} ({}):", param.name, param.description);
-            if let Some(semantic) = param.semantic_value {
+            if let Some(semantic) = param.value {
                 println!("  Semantic Match: {}", semantic);
             }
         }
 
         println!("\nRaw JSON Output:");
-        println!("{}", serde_json::to_string_pretty(&result.json_output)?);
+        println!("{}", serde_json::to_string_pretty(&result.raw_json)?);
     }
     Ok(())
 }

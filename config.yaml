@@ -39,6 +39,11 @@ models:
     claude: "claude-3-5-sonnet-20241022"
     temperature: 0.1
     max_tokens: 500
+  intent_classification:
+      cohere: "command-r7b-12-2024"
+      claude: "claude-3-5-sonnet-20241022"
+      temperature: 0.1
+      max_tokens: 50
 
 # Provider configurations
 providers:

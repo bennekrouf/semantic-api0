@@ -1,5 +1,6 @@
 use crate::models::{
-    providers::ModelProvider, ConfigFile, Endpoint, EndpointParameter, ModelsConfig,
+    providers::ModelProvider, ConfigFile, Endpoint, EndpointParameter, EnhancedEndpoint,
+    ModelsConfig,
 };
 use serde_json::Value;
 use std::sync::Arc;
@@ -13,6 +14,7 @@ pub struct WorkflowContext {
     // Configurations
     pub models_config: Option<ModelsConfig>,
     pub endpoints_config: Option<ConfigFile>,
+    pub enhanced_endpoints: Option<Vec<EnhancedEndpoint>>,
     // Processing state
     pub json_output: Option<Value>,
     pub matched_endpoint: Option<Endpoint>,
@@ -32,6 +34,7 @@ impl WorkflowContext {
             endpoints_config: None,
             json_output: None,
             matched_endpoint: None,
+            enhanced_endpoints: None,
             parameters: vec![],
             endpoint_id: None,
             endpoint_description: None,

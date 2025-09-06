@@ -35,7 +35,8 @@ pub struct ModelConfig {
 pub struct ModelsConfig {
     pub sentence_to_json: ModelConfig,
     pub find_endpoint: ModelConfig,
-    pub semantic_match: ModelConfig,
+    // pub semantic_match: ModelConfig,
+    pub intent_classification: ModelConfig,
 }
 
 pub fn create_provider(

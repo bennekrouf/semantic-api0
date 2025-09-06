@@ -45,6 +45,8 @@ openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -node
 
 ⚠️ **IMPORTANT**: Email is required ONLY when analyzing sentences in CLI mode. It is not needed when starting the gRPC server.
 
+cargo run -- --provider cohere --api http://0.0.0.0:50057
+
 ### CLI Mode with Local Endpoints (email required)
 ```bash
 # Analyze a sentence with Ollama

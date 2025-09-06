@@ -35,7 +35,7 @@ struct ResponseFormat {
 
 #[derive(Debug, Deserialize)]
 struct CohereResponse {
-    text: String,
+    // text: String,
 }
 
 impl CohereProvider {

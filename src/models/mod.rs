@@ -42,3 +42,40 @@ pub struct ConfigFile {
 }
 
 impl ConfigFile {}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct EnhancedEndpoint {
+    pub id: String,
+    pub name: String,
+    pub text: String,
+    pub description: String,
+    pub verb: String,
+    pub base: String,
+    pub path: String,
+    pub essential_path: String,
+    pub api_group_id: String,
+    pub api_group_name: String,
+    pub parameters: Vec<EndpointParameter>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct EnhancedAnalysisResult {
+    pub endpoint_id: String,
+    pub endpoint_name: String,
+    pub endpoint_description: String,
+    pub verb: String,
+    pub base: String,
+    pub path: String,
+    pub essential_path: String,
+    pub api_group_id: String,
+    pub api_group_name: String,
+    pub parameters: Vec<ParameterMatch>,
+    pub raw_json: serde_json::Value,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct ParameterMatch {
+    pub name: String,
+    pub description: String,
+    pub value: Option<String>,
+}

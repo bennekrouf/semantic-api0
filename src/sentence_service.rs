@@ -1,5 +1,5 @@
 // src/sentence_service.rs
-use crate::analyze_sentence::analyze_sentence;
+use crate::analyze_sentence::analyze_sentence_enhanced;
 use crate::models::providers::ModelProvider;
 use futures::Stream;
 use std::pin::Pin;
@@ -13,7 +13,7 @@ pub mod sentence {
 }
 
 use sentence::sentence_service_server::SentenceService;
-use sentence::{Parameter, SentenceRequest, SentenceResponse};
+use sentence::{MessageRequest, MessageResponse, Parameter, SentenceRequest, SentenceResponse};
 use tonic::codegen::tokio_stream::wrappers::ReceiverStream;
 use tracing::Instrument;
 
@@ -128,7 +128,7 @@ impl SentenceService for SentenceAnalyzeService {
 
         tokio::spawn(async move {
             // Pass the input_sentence, provider, API URL, and email to analyze_sentence
-            let result = analyze_sentence(
+            let result = analyze_sentence_enhanced(
                 &input_sentence,
                 provider_clone,
                 api_url_clone.clone(),
@@ -138,7 +138,7 @@ impl SentenceService for SentenceAnalyzeService {
             .await;
 
             match result {
-                Ok(result) => {
+                Ok(enhanced_result) => {
                     tracing::info!(
                         client_id = %client_id,
                         email = %email,
@@ -146,18 +146,25 @@ impl SentenceService for SentenceAnalyzeService {
                     );
 
                     let response = SentenceResponse {
-                        endpoint_id: result.endpoint_id,
-                        endpoint_description: result.endpoint_description,
-                        parameters: result
+                        endpoint_id: enhanced_result.endpoint_id,
+                        endpoint_name: Some(enhanced_result.endpoint_name),
+                        endpoint_description: enhanced_result.endpoint_description,
+                        verb: Some(enhanced_result.verb),
+                        base: Some(enhanced_result.base),
+                        path: Some(enhanced_result.path),
+                        essential_path: Some(enhanced_result.essential_path),
+                        api_group_id: Some(enhanced_result.api_group_id),
+                        api_group_name: Some(enhanced_result.api_group_name),
+                        parameters: enhanced_result
                             .parameters
                             .into_iter()
                             .map(|param| Parameter {
                                 name: param.name,
                                 description: param.description,
-                                semantic_value: param.semantic_value,
+                                semantic_value: param.value,
                             })
                             .collect(),
-                        json_output: match serde_json::to_string(&result.json_output) {
+                        json_output: match serde_json::to_string(&enhanced_result.raw_json) {
                             Ok(json) => json,
                             Err(e) => {
                                 tracing::error!(error = %e, "JSON serialization failed");
@@ -240,5 +247,46 @@ impl SentenceService for SentenceAnalyzeService {
         });
 
         Ok(Response::new(Box::pin(ReceiverStream::new(rx))))
+    }
+
+    async fn send_message(
+        &self,
+        request: Request<MessageRequest>,
+    ) -> Result<Response<MessageResponse>, Status> {
+        let message_request = request.into_inner();
+        let message = message_request.message;
+
+        if message.trim().is_empty() {
+            return Err(Status::invalid_argument("Message cannot be empty"));
+        }
+
+        tracing::info!("Processing message: {}", message);
+
+        // Load model configuration
+        let models_config = match crate::models::config::load_models_config().await {
+            Ok(config) => config,
+            Err(e) => {
+                tracing::error!("Failed to load models config: {}", e);
+                return Err(Status::internal("Configuration error"));
+            }
+        };
+
+        // Use sentence_to_json config for now, or add a specific message config
+        let model_config = &models_config.sentence_to_json;
+
+        // Call provider to generate response
+        match self.provider.generate(&message, model_config).await {
+            Ok(response_text) => {
+                tracing::info!("Successfully generated response");
+                Ok(Response::new(MessageResponse {
+                    response: response_text,
+                    success: true,
+                }))
+            }
+            Err(e) => {
+                tracing::error!("Failed to generate response: {}", e);
+                Err(Status::internal("Failed to generate response"))
+            }
+        }
     }
 }
