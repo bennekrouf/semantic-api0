@@ -66,25 +66,39 @@ pub async fn match_fields_semantic(
         .ok_or("Invalid JSON structure")?;
 
     for param in &endpoint.parameters {
-        // First try exact match
-        let mut value = input_fields.get(&param.name).map(|v| v.to_string());
+        let mut value: Option<String> = None;
 
-        // If no exact match, try alternatives
+        // First try exact match from input fields
+        if let Some(v) = input_fields.get(&param.name) {
+            value = match v {
+                Value::String(s) => Some(s.clone()),
+                _ => Some(v.to_string().trim_matches('"').to_string()),
+            };
+        }
+
+        // If no exact match, try alternatives from input fields
         if value.is_none() {
             if let Some(alternatives) = &param.alternatives {
                 for alt in alternatives {
                     if let Some(v) = input_fields.get(alt) {
-                        value = Some(v.to_string());
+                        value = match v {
+                            Value::String(s) => Some(s.clone()),
+                            _ => Some(v.to_string().trim_matches('"').to_string()),
+                        };
                         break;
                     }
                 }
             }
         }
 
-        // If still no match, check semantic matching result
+        // If still no match, check semantic matching result from LLM
         if value.is_none() {
             if let Some(v) = json_response.get(&param.name) {
-                value = Some(v.to_string().trim_matches('"').to_string());
+                value = match v {
+                    Value::String(s) => Some(s.clone()),
+                    Value::Null => None,
+                    _ => Some(v.to_string()),
+                };
             }
         }
 
