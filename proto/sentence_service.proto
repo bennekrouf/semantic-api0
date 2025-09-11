@@ -9,6 +9,7 @@ service SentenceService {
 
 message SentenceRequest {
   string sentence = 1;
+optional string conversation_id = 2;
 }
 
 message Parameter {
@@ -29,14 +30,40 @@ message SentenceResponse {
   optional string api_group_name = 9;
   repeated Parameter parameters = 10;
   string json_output = 11;
+  optional string conversation_id = 12;
+  MatchingInfo matching_info = 13;
 }
 
 message MessageRequest {
   string message = 1;
+  optional string conversation_id = 2;
 }
 
 message MessageResponse {
   string response = 1;
   bool success = 2;
+  optional string conversation_id = 3;
+}
+
+enum MatchingStatus {
+  COMPLETE = 0;
+  PARTIAL = 1;
+  INCOMPLETE = 2;
+}
+
+message MissingField {
+  string name = 1;
+  string description = 2;
+}
+
+message MatchingInfo {
+  MatchingStatus status = 1;  // Changed to enum
+  int32 total_required_fields = 2;
+  int32 mapped_required_fields = 3;
+  int32 total_optional_fields = 4;
+  int32 mapped_optional_fields = 5;
+  float completion_percentage = 6;
+  repeated MissingField missing_required_fields = 7;
+  repeated MissingField missing_optional_fields = 8;
 }
 

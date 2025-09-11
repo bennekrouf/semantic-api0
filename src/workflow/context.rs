@@ -11,6 +11,7 @@ pub struct WorkflowContext {
     // Input
     pub sentence: String,
     pub email: Option<String>,
+    pub conversation_id: Option<String>,
     // Configurations
     pub models_config: Option<ModelsConfig>,
     pub endpoints_config: Option<ConfigFile>,
@@ -29,6 +30,7 @@ impl WorkflowContext {
         Self {
             sentence,
             email: None,
+            conversation_id: None,
             provider,
             models_config: None,
             endpoints_config: None,

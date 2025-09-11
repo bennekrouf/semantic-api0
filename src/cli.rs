@@ -263,7 +263,7 @@ pub async fn handle_cli(
         info!("Analyzing prompt via CLI: {}", prompt);
 
         // Pass the API URL and email to analyze_sentence
-        let result = analyze_sentence_enhanced(&prompt, provider, cli.api, &email).await?;
+        let result = analyze_sentence_enhanced(&prompt, provider, cli.api, &email, None).await?;
 
         println!("\nAnalysis Results:");
         println!(
@@ -280,6 +280,17 @@ pub async fn handle_cli(
 
         println!("\nRaw JSON Output:");
         println!("{}", serde_json::to_string_pretty(&result.raw_json)?);
+
+        let status_text = match result.matching_info.status {
+            crate::models::MatchingStatus::Complete => "Complete",
+            crate::models::MatchingStatus::Partial => "Partial",
+            crate::models::MatchingStatus::Incomplete => "Incomplete",
+        };
+
+        println!(
+            "Matching Status: {} ({:.1}% complete)",
+            status_text, result.matching_info.completion_percentage
+        );
     }
     Ok(())
 }

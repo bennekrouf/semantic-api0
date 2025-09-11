@@ -81,7 +81,8 @@ impl SentenceService for SentenceAnalyzeService {
         request: Request<SentenceRequest>,
     ) -> Result<Response<Self::AnalyzeSentenceStream>, Status> {
         let metadata = request.metadata().clone();
-        // Log request details
+        let sentence_request = request.into_inner(); // Move this line up
+                                                     // Log request details
         tracing::info!("Request metadata: {:?}", metadata);
         tracing::info!("Request headers: {:?}", metadata.keys());
 
@@ -95,7 +96,7 @@ impl SentenceService for SentenceAnalyzeService {
             }
         };
 
-        let input_sentence = request.into_inner().sentence;
+        let input_sentence = sentence_request.sentence;
         tracing::info!(
             input_sentence = %input_sentence,
             email = %email,
@@ -126,6 +127,7 @@ impl SentenceService for SentenceAnalyzeService {
         let provider_clone = self.provider.clone();
         let api_url_clone = self.api_url.clone();
 
+        let conversation_id = sentence_request.conversation_id;
         tokio::spawn(async move {
             // Pass the input_sentence, provider, API URL, and email to analyze_sentence
             let result = analyze_sentence_enhanced(
@@ -133,6 +135,7 @@ impl SentenceService for SentenceAnalyzeService {
                 provider_clone,
                 api_url_clone.clone(),
                 &email,
+                conversation_id.clone(),
             )
             .instrument(analyze_span)
             .await;
@@ -146,6 +149,7 @@ impl SentenceService for SentenceAnalyzeService {
                     );
 
                     let response = SentenceResponse {
+                        conversation_id: enhanced_result.conversation_id, // Add this line
                         endpoint_id: enhanced_result.endpoint_id,
                         endpoint_name: Some(enhanced_result.endpoint_name),
                         endpoint_description: enhanced_result.endpoint_description,
@@ -171,6 +175,56 @@ impl SentenceService for SentenceAnalyzeService {
                                 format!("{{\"error\": \"JSON serialization failed: {}\"}}", e)
                             }
                         },
+                        matching_info: Some(sentence::MatchingInfo {
+                            status: match enhanced_result.matching_info.status {
+                                crate::models::MatchingStatus::Complete => {
+                                    sentence::MatchingStatus::Complete as i32
+                                }
+                                crate::models::MatchingStatus::Partial => {
+                                    sentence::MatchingStatus::Partial as i32
+                                }
+                                crate::models::MatchingStatus::Incomplete => {
+                                    sentence::MatchingStatus::Incomplete as i32
+                                }
+                            },
+                            total_required_fields: enhanced_result
+                                .matching_info
+                                .total_required_fields
+                                as i32,
+                            mapped_required_fields: enhanced_result
+                                .matching_info
+                                .mapped_required_fields
+                                as i32,
+                            total_optional_fields: enhanced_result
+                                .matching_info
+                                .total_optional_fields
+                                as i32,
+                            mapped_optional_fields: enhanced_result
+                                .matching_info
+                                .mapped_optional_fields
+                                as i32,
+                            completion_percentage: enhanced_result
+                                .matching_info
+                                .completion_percentage,
+                            missing_required_fields: enhanced_result
+                                .matching_info
+                                .missing_required_fields
+                                .into_iter()
+                                .map(|field| sentence::MissingField {
+                                    name: field.name,
+                                    description: field.description,
+                                })
+                                .collect(),
+                            missing_optional_fields: enhanced_result
+                                .matching_info
+                                .missing_optional_fields
+                                .into_iter()
+                                .map(|field| sentence::MissingField {
+                                    name: field.name,
+                                    description: field.description,
+                                })
+                                .collect(),
+                        }),
                     };
 
                     tracing::info!(
@@ -255,6 +309,7 @@ impl SentenceService for SentenceAnalyzeService {
     ) -> Result<Response<MessageResponse>, Status> {
         let message_request = request.into_inner();
         let message = message_request.message;
+        let conversation_id = message_request.conversation_id;
 
         if message.trim().is_empty() {
             return Err(Status::invalid_argument("Message cannot be empty"));
@@ -281,6 +336,7 @@ impl SentenceService for SentenceAnalyzeService {
                 Ok(Response::new(MessageResponse {
                     response: response_text,
                     success: true,
+                    conversation_id,
                 }))
             }
             Err(e) => {

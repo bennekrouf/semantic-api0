@@ -1,7 +1,7 @@
 use crate::endpoint_client::{check_endpoint_service_health, get_enhanced_endpoints};
 use crate::general_question_handler::handle_general_question;
 use crate::models::providers::ModelProvider;
-use crate::models::{EnhancedAnalysisResult, ParameterMatch};
+use crate::models::{EnhancedAnalysisResult, MatchingInfo, MatchingStatus, ParameterMatch};
 use crate::utils::email::validate_email;
 use crate::workflow::classify_intent::{classify_intent, IntentType};
 use crate::workflow::find_closest_endpoint::find_closest_endpoint;
@@ -190,6 +190,7 @@ pub async fn analyze_sentence_enhanced(
     provider: Arc<dyn ModelProvider>,
     api_url: Option<String>,
     email: &str,
+    conversation_id: Option<String>,
 ) -> Result<EnhancedAnalysisResult, Box<dyn Error + Send + Sync>> {
     if email.is_empty() {
         return Err("Email is required".into());
@@ -296,8 +297,12 @@ steps:
                 })
                 .collect();
 
+            let matching_info =
+                MatchingInfo::compute(&parameter_matches, &enhanced_endpoint.parameters);
+
             // Return enhanced result with complete endpoint metadata
             Ok(EnhancedAnalysisResult {
+                conversation_id,
                 endpoint_id: enhanced_endpoint.id.clone(),
                 endpoint_name: enhanced_endpoint.name.clone(),
                 endpoint_description: enhanced_endpoint.description.clone(),
@@ -309,6 +314,7 @@ steps:
                 api_group_name: enhanced_endpoint.api_group_name.clone(),
                 parameters: parameter_matches,
                 raw_json: context.json_output.ok_or("JSON output not available")?,
+                matching_info,
             })
         }
 
@@ -317,6 +323,17 @@ steps:
 
             // Handle general questions with a simple response
             let conversational_response = handle_general_question(sentence, provider).await?;
+
+            let matching_info = MatchingInfo {
+                status: MatchingStatus::Complete, // General questions are always "complete"
+                total_required_fields: 0,
+                mapped_required_fields: 0,
+                total_optional_fields: 0,
+                mapped_optional_fields: 0,
+                completion_percentage: 100.0,
+                missing_required_fields: vec![],
+                missing_optional_fields: vec![],
+            };
 
             // Return a mock EnhancedAnalysisResult for general conversations
             Ok(EnhancedAnalysisResult {
@@ -335,6 +352,8 @@ steps:
                     "response": conversational_response,
                     "intent": "general_question"
                 }),
+                conversation_id,
+                matching_info,
             })
         }
     }
