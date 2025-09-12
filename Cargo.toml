@@ -5,7 +5,6 @@ edition = "2021"
 
 [dependencies]
 grpc_logger = "0.10.0"
-# grpc_logger = { path = "../grpc-logger" } 
 regex = "1.11.1"
 reqwest = { version = "0.12.12", features = ["json"] }
 serde = { version = "1.0.217", features = ["derive"] }
@@ -28,6 +27,8 @@ async-trait = "0.1.86"
 dotenv = "0.15.0"
 h2 = "0.4.10"
 env = "1.0.1"
+uuid = { version = "1.18.1", features = ["v4", "serde"] }
+chrono = { version = "0.4.42", features = ["serde"] }
 
 [build-dependencies]
 tonic-build = "0.12.3"

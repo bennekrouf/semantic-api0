@@ -1,6 +1,7 @@
-// src/main.rs
+// src/main.rs - Updated with conversation management
 mod analyze_sentence;
 mod cli;
+mod conversation; // Add this new module
 mod endpoint_client;
 mod grpc_server;
 mod json_helper;
@@ -28,8 +29,6 @@ use tracing::{error, info};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, Registry};
-
-// In src/main.rs - Update the main function logic
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -129,13 +128,13 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         }
     };
 
-    // FIXED: Check for CLI commands first, then default to server mode
+    // Check for CLI commands first, then default to server mode
     if cli.list_endpoints || cli.prompt.is_some() {
         // CLI mode - handle the command and exit
         handle_cli(cli, provider_arc).await?;
     } else {
         // Server mode - email is not needed
-        info!("No command provided, starting gRPC server...");
+        info!("No command provided, starting gRPC server with conversation management...");
 
         let grpc_server = tokio::spawn(async move {
             if let Err(e) = start_sentence_grpc_server(provider_arc.clone(), api_url).await {
@@ -143,7 +142,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
             }
         });
 
-        info!("Semantic server started");
+        info!("Semantic server started with conversation management");
 
         tokio::select! {
             _ = signal::ctrl_c() => {
@@ -161,3 +160,4 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 
     Ok(())
 }
+
