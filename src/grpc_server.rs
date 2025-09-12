@@ -65,7 +65,48 @@ pub async fn start_sentence_grpc_server(
     tracing::info!("Starting semantic gRPC server on {}", addr);
 
     // Use the provider that was passed in from main.rs
-    let sentence_service = SentenceAnalyzeService::new(provider, api_url);
+    // In src/grpc_server.rs, change the initialization to:
+
+    let sentence_service = match std::env::var("DATABASE_URL") {
+        Ok(db_url) => {
+            match SentenceAnalyzeService::with_progressive_matching(
+                provider.clone(),
+                api_url.clone(),
+                &db_url,
+            )
+            .await
+            {
+                Ok(service) => service,
+                Err(e) => {
+                    error!("Failed to initialize with progressive matching: {}", e);
+                    info!("Falling back to service without progressive matching");
+                    SentenceAnalyzeService::new(provider, api_url)
+                }
+            }
+        }
+        Err(_) => {
+            if let Err(e) = std::fs::create_dir_all("./data") {
+                error!("Failed to create data directory: {}", e);
+            }
+
+            // let default_db = "./daa/conversations.db";
+            let default_db = "sqlite:conversations.db"; // Remove ./data/ prefix
+            match SentenceAnalyzeService::with_progressive_matching(
+                provider.clone(),
+                api_url.clone(),
+                default_db,
+            )
+            .await
+            {
+                Ok(service) => service,
+                Err(e) => {
+                    error!("Failed to initialize with progressive matching: {}", e);
+                    info!("Falling back to service without progressive matching");
+                    SentenceAnalyzeService::new(provider, api_url)
+                }
+            }
+        }
+    };
     let service = SentenceServiceServer::new(sentence_service);
 
     match Server::builder()

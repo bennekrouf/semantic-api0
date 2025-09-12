@@ -1,9 +1,12 @@
-// src/sentence_service.rs - Updated with conversation management
+// src/sentence_service.rs
 use crate::analyze_sentence::analyze_sentence_enhanced;
 use crate::conversation::{
     ConversationManager, StartConversationRequest, StartConversationResponse,
 };
 use crate::models::providers::ModelProvider;
+use crate::progressive_matching::{
+    integrate_progressive_matching, ParameterValue, ProgressiveMatchingManager,
+};
 use futures::Stream;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -24,6 +27,7 @@ pub struct SentenceAnalyzeService {
     provider: Arc<dyn ModelProvider>,
     api_url: Option<String>,
     conversation_manager: Arc<ConversationManager>,
+    progressive_manager: Option<Arc<ProgressiveMatchingManager>>,
 }
 
 impl SentenceAnalyzeService {
@@ -32,10 +36,25 @@ impl SentenceAnalyzeService {
             provider,
             api_url,
             conversation_manager: Arc::new(ConversationManager::new()),
+            progressive_manager: None,
         }
     }
 
-    // Get email from metadata with validation
+    pub async fn with_progressive_matching(
+        provider: Arc<dyn ModelProvider>,
+        api_url: Option<String>,
+        database_url: &str,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let progressive_manager = Arc::new(ProgressiveMatchingManager::new(database_url).await?);
+
+        Ok(Self {
+            provider,
+            api_url,
+            conversation_manager: Arc::new(ConversationManager::new()),
+            progressive_manager: Some(progressive_manager),
+        })
+    }
+
     fn get_email_validated(&self, metadata: &MetadataMap) -> Result<String, tonic::Status> {
         let email = metadata
             .get("email")
@@ -56,7 +75,6 @@ impl SentenceAnalyzeService {
         }
     }
 
-    // Helper function to extract client_id from metadata
     fn get_client_id(metadata: &MetadataMap) -> String {
         metadata
             .get("client-id")
@@ -65,7 +83,6 @@ impl SentenceAnalyzeService {
             .to_string()
     }
 
-    // New method to start conversations
     pub async fn start_conversation(
         &self,
         request: StartConversationRequest,
@@ -99,7 +116,6 @@ impl SentenceAnalyzeService {
         }
     }
 
-    // Helper to generate conversation_id if not provided
     async fn ensure_conversation_id(
         &self,
         conversation_id: Option<String>,
@@ -107,7 +123,6 @@ impl SentenceAnalyzeService {
     ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         match conversation_id {
             Some(id) if !id.is_empty() => {
-                // Verify conversation exists
                 if self
                     .conversation_manager
                     .get_conversation(&id)
@@ -116,7 +131,6 @@ impl SentenceAnalyzeService {
                 {
                     Ok(id)
                 } else {
-                    // Conversation doesn't exist, create a new one
                     tracing::warn!("Conversation {} not found, creating new one", id);
                     self.conversation_manager
                         .start_conversation(email.to_string(), self.api_url.clone())
@@ -124,7 +138,6 @@ impl SentenceAnalyzeService {
                 }
             }
             _ => {
-                // No conversation_id provided, create new one
                 self.conversation_manager
                     .start_conversation(email.to_string(), self.api_url.clone())
                     .await
@@ -133,7 +146,6 @@ impl SentenceAnalyzeService {
     }
 }
 
-// Implement Debug manually
 impl std::fmt::Debug for SentenceAnalyzeService {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SentenceAnalyzeService")
@@ -169,7 +181,6 @@ impl SentenceService for SentenceAnalyzeService {
 
         let input_sentence = sentence_request.sentence;
 
-        // Ensure we have a valid conversation_id
         let conversation_id = match self
             .ensure_conversation_id(sentence_request.conversation_id.clone(), &email)
             .await
@@ -196,10 +207,10 @@ impl SentenceService for SentenceAnalyzeService {
             conversation_id = %conversation_id
         );
 
-        // Clone necessary data for the spawned task
         let provider_clone = self.provider.clone();
         let api_url_clone = self.api_url.clone();
         let conversation_manager_clone = self.conversation_manager.clone();
+        let progressive_manager_clone = self.progressive_manager.clone();
         let email_clone = email.clone();
         let conversation_id_clone = conversation_id.clone();
 
@@ -222,6 +233,49 @@ impl SentenceService for SentenceAnalyzeService {
                         conversation_id = %conversation_id_clone,
                         "Analysis completed"
                     );
+
+                    // Progressive matching integration
+                    let progressive_result = if let Some(ref manager) = progressive_manager_clone {
+                        // Get required parameter names from endpoint
+                        let all_endpoint_params: Vec<String> = enhanced_result
+                            .matching_info
+                            .missing_required_fields
+                            .iter()
+                            .map(|f| f.name.clone())
+                            .chain(enhanced_result.parameters.iter().map(|p| p.name.clone()))
+                            .collect();
+
+                        // Convert matched parameters to ParameterValue format
+                        let new_parameters: Vec<ParameterValue> = enhanced_result
+                            .parameters
+                            .iter()
+                            .filter_map(|p| {
+                                p.value.as_ref().map(|val| ParameterValue {
+                                    name: p.name.clone(),
+                                    value: val.clone(),
+                                    description: p.description.clone(),
+                                })
+                            })
+                            .collect();
+
+                        match integrate_progressive_matching(
+                            &conversation_id_clone,
+                            &enhanced_result.endpoint_id,
+                            new_parameters,
+                            all_endpoint_params,
+                            manager,
+                        )
+                        .await
+                        {
+                            Ok(progressive_result) => Some(progressive_result),
+                            Err(e) => {
+                                tracing::warn!("Progressive matching failed: {}", e);
+                                None
+                            }
+                        }
+                    } else {
+                        None
+                    };
 
                     // Add message to conversation history
                     let parameters_json = serde_json::to_value(&enhanced_result.parameters)
@@ -267,25 +321,36 @@ impl SentenceService for SentenceAnalyzeService {
                             }
                         },
                         matching_info: Some(sentence::MatchingInfo {
-                            status: match enhanced_result.matching_info.status {
-                                crate::models::MatchingStatus::Complete => {
+                            status: if let Some(ref prog) = progressive_result {
+                                if prog.ready_for_execution {
                                     sentence::MatchingStatus::Complete as i32
-                                }
-                                crate::models::MatchingStatus::Partial => {
+                                } else if prog.completion_percentage > 0.0 {
                                     sentence::MatchingStatus::Partial as i32
-                                }
-                                crate::models::MatchingStatus::Incomplete => {
+                                } else {
                                     sentence::MatchingStatus::Incomplete as i32
+                                }
+                            } else {
+                                match enhanced_result.matching_info.status {
+                                    crate::models::MatchingStatus::Complete => {
+                                        sentence::MatchingStatus::Complete as i32
+                                    }
+                                    crate::models::MatchingStatus::Partial => {
+                                        sentence::MatchingStatus::Partial as i32
+                                    }
+                                    crate::models::MatchingStatus::Incomplete => {
+                                        sentence::MatchingStatus::Incomplete as i32
+                                    }
                                 }
                             },
                             total_required_fields: enhanced_result
                                 .matching_info
                                 .total_required_fields
                                 as i32,
-                            mapped_required_fields: enhanced_result
-                                .matching_info
-                                .mapped_required_fields
-                                as i32,
+                            mapped_required_fields: if let Some(ref prog) = progressive_result {
+                                prog.matched_parameters.len() as i32
+                            } else {
+                                enhanced_result.matching_info.mapped_required_fields as i32
+                            },
                             total_optional_fields: enhanced_result
                                 .matching_info
                                 .total_optional_fields
@@ -294,18 +359,30 @@ impl SentenceService for SentenceAnalyzeService {
                                 .matching_info
                                 .mapped_optional_fields
                                 as i32,
-                            completion_percentage: enhanced_result
-                                .matching_info
-                                .completion_percentage,
-                            missing_required_fields: enhanced_result
-                                .matching_info
-                                .missing_required_fields
-                                .into_iter()
-                                .map(|field| sentence::MissingField {
-                                    name: field.name,
-                                    description: field.description,
-                                })
-                                .collect(),
+                            completion_percentage: if let Some(ref prog) = progressive_result {
+                                prog.completion_percentage
+                            } else {
+                                enhanced_result.matching_info.completion_percentage
+                            },
+                            missing_required_fields: if let Some(ref prog) = progressive_result {
+                                prog.missing_parameters
+                                    .iter()
+                                    .map(|name| sentence::MissingField {
+                                        name: name.clone(),
+                                        description: format!("Missing parameter: {}", name),
+                                    })
+                                    .collect()
+                            } else {
+                                enhanced_result
+                                    .matching_info
+                                    .missing_required_fields
+                                    .into_iter()
+                                    .map(|field| sentence::MissingField {
+                                        name: field.name,
+                                        description: field.description,
+                                    })
+                                    .collect()
+                            },
                             missing_optional_fields: enhanced_result
                                 .matching_info
                                 .missing_optional_fields
@@ -322,7 +399,7 @@ impl SentenceService for SentenceAnalyzeService {
                         tracing::error!(
                             client_id = %client_id,
                             email = %email_clone,
-                            conversation_id = %conversation_id_clone.clone(),
+                            conversation_id = %conversation_id_clone,
                             "Failed to send response - stream closed"
                         );
                     }
@@ -372,7 +449,6 @@ impl SentenceService for SentenceAnalyzeService {
             return Err(Status::invalid_argument("Message cannot be empty"));
         }
 
-        // Get conversation_id or create new one
         let conversation_id = message_request
             .conversation_id
             .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
@@ -383,7 +459,6 @@ impl SentenceService for SentenceAnalyzeService {
             "Processing message"
         );
 
-        // Load model configuration
         let models_config = match crate::models::config::load_models_config().await {
             Ok(config) => config,
             Err(e) => {
@@ -394,7 +469,6 @@ impl SentenceService for SentenceAnalyzeService {
 
         let model_config = &models_config.sentence_to_json;
 
-        // Generate response using the provider
         match self.provider.generate(&message, model_config).await {
             Ok(response_text) => {
                 tracing::info!("Successfully generated response");
@@ -411,3 +485,4 @@ impl SentenceService for SentenceAnalyzeService {
         }
     }
 }
+
