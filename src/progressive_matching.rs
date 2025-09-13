@@ -1,7 +1,6 @@
 // src/progressive_matching.rs
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, SqlitePool};
-use std::collections::HashMap;
 use std::error::Error;
 use tracing::{debug, info};
 

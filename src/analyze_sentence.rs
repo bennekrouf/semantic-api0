@@ -224,17 +224,17 @@ steps:
     retry:
       max_attempts: 3
       delay_ms: 1000
-  - name: json_generation
-    enabled: true
-    retry:
-      max_attempts: 3
-      delay_ms: 1000
-  - name: endpoint_matching
+  - name: endpoint_matching  # Do endpoint matching FIRST
     enabled: true
     retry:
       max_attempts: 2
       delay_ms: 500
-  - name: field_matching
+  - name: json_generation    # Then extract parameters for the specific endpoint
+    enabled: true
+    retry:
+      max_attempts: 3
+      delay_ms: 1000
+  - name: field_matching     # Finally do field matching as cleanup
     enabled: true
     retry:
       max_attempts: 2
@@ -260,7 +260,10 @@ steps:
                         engine.register_step(step_config, Arc::new(JsonGenerationStep));
                     }
                     "endpoint_matching" => {
-                        engine.register_step(step_config, Arc::new(EndpointMatchingStep));
+                        engine.register_step(
+                            step_config,
+                            Arc::new(EndpointMatchingStep), // Uses the updated implementation
+                        );
                     }
                     "field_matching" => {
                         engine.register_step(step_config, Arc::new(FieldMatchingStep));

@@ -15,6 +15,16 @@ prompts:
           DO NOT use any markdown formatting or code blocks.
           DO NOT add any additional text or explanations.
           DO NOT wrap the response in quotes or backticks.
+      v2:
+        template: |
+          Select the most semantically appropriate endpoint for this user input: "{input_sentence}"
+
+          Available endpoints:
+          {endpoints_list}
+
+          Respond with ONLY the endpoint ID (nothing else).
+          Consider the core intent and meaning, not just keywords.
+          If no endpoint matches well, respond with "NO_MATCH".
     default_version: "v1"
     
   match_fields:
@@ -68,6 +78,25 @@ prompts:
             ]
           }
           Now for your sentence: {sentence}
+      v2:
+        template: |
+          Extract parameter values from: "{sentence}"
+          
+          Target endpoint: {endpoint_description}
+          Required parameters:
+          {required_params}
+          Optional parameters:
+          {optional_params}
+          
+          Rules:
+          1. Extract ONLY values for the listed parameters
+          2. Use parameter names EXACTLY as provided
+          3. If a parameter value isn't found, omit it completely
+          4. Output valid JSON only: {{"param_name": "extracted_value"}}
+          5. DO NOT include trailing commas
+          6. DO NOT add explanatory text
+          
+          Sentence: {sentence}
     default_version: "v1"
 
   intent_classification:

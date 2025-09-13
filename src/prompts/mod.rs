@@ -1,5 +1,6 @@
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::env;
 use std::error::Error;
 use tracing::warn;
 
@@ -31,21 +32,6 @@ impl PromptManager {
         Ok(Self { config })
     }
 
-    pub fn format_intent_classification(
-        &self,
-        sentence: &str,
-        endpoints_list: &str,
-        version: Option<&str>,
-    ) -> String {
-        let template = self
-            .get_prompt("intent_classification", version)
-            .unwrap_or_default();
-
-        template
-            .replace("{sentence}", sentence)
-            .replace("{endpoints_list}", endpoints_list)
-    }
-
     /// Gets a prompt template by name and optional version
     pub fn get_prompt(&self, name: &str, version: Option<&str>) -> Option<&str> {
         let prompt_versions = self.config.prompts.get(name)?;
@@ -68,6 +54,21 @@ impl PromptManager {
         }
     }
 
+    pub fn format_intent_classification(
+        &self,
+        sentence: &str,
+        endpoints_list: &str,
+        version: Option<&str>,
+    ) -> String {
+        let template = self
+            .get_prompt("intent_classification", version)
+            .unwrap_or_default();
+
+        template
+            .replace("{sentence}", sentence)
+            .replace("{endpoints_list}", endpoints_list)
+    }
+
     pub fn format_find_endpoint(
         &self,
         input_sentence: &str,
@@ -83,12 +84,60 @@ impl PromptManager {
             .replace("{actions_list}", actions_list)
     }
 
+    pub fn format_find_endpoint_v2(
+        &self,
+        input_sentence: &str,
+        endpoints_list: &str,
+        version: Option<&str>,
+    ) -> String {
+        let template = self
+            .get_prompt("find_endpoint", version)
+            .unwrap_or_default();
+
+        template
+            .replace("{input_sentence}", input_sentence)
+            .replace("{endpoints_list}", endpoints_list)
+    }
+
     pub fn format_sentence_to_json(&self, sentence: &str, version: Option<&str>) -> String {
         let template = self
             .get_prompt("sentence_to_json", version)
             .unwrap_or_default();
 
         template.replace("{sentence}", sentence)
+    }
+
+    pub fn format_sentence_to_json_v2(
+        &self,
+        sentence: &str,
+        endpoint_description: &str,
+        required_params: &str,
+        optional_params: &str,
+        version: Option<&str>,
+    ) -> String {
+        let template = self
+            .get_prompt("sentence_to_json", version)
+            .unwrap_or_default();
+
+        template
+            .replace("{sentence}", sentence)
+            .replace("{endpoint_description}", endpoint_description)
+            .replace("{required_params}", required_params)
+            .replace("{optional_params}", optional_params)
+    }
+
+    pub fn list_versions(&self, prompt_name: &str) -> Option<Vec<String>> {
+        self.config
+            .prompts
+            .get(prompt_name)
+            .map(|p| p.versions.keys().cloned().collect())
+    }
+
+    pub fn get_default_version(&self, prompt_name: &str) -> Option<&str> {
+        self.config
+            .prompts
+            .get(prompt_name)
+            .map(|p| p.default_version.as_str())
     }
 }
 
@@ -108,6 +157,9 @@ mod tests {
         let v1_prompt = manager.get_prompt("find_endpoint", Some("v1"));
         assert!(v1_prompt.is_some());
 
+        let v2_prompt = manager.get_prompt("find_endpoint", Some("v2"));
+        assert!(v2_prompt.is_some());
+
         // Test fallback for non-existent version
         let invalid_prompt = manager.get_prompt("find_endpoint", Some("non_existent"));
         assert_eq!(invalid_prompt, manager.get_prompt("find_endpoint", None));
@@ -115,5 +167,34 @@ mod tests {
         // Test version listing
         let versions = manager.list_versions("find_endpoint").unwrap();
         assert!(versions.contains(&"v1".to_string()));
+        assert!(versions.contains(&"v2".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_v2_formatting() {
+        let manager = PromptManager::new().await.unwrap();
+
+        // Test v2 endpoint formatting
+        let formatted = manager.format_find_endpoint_v2(
+            "send email to john",
+            "1. ID: send_email | Description: Send email\n",
+            Some("v2"),
+        );
+
+        assert!(formatted.contains("send email to john"));
+        assert!(formatted.contains("endpoint ID"));
+
+        // Test v2 parameter extraction formatting
+        let formatted = manager.format_sentence_to_json_v2(
+            "send email to john about meeting",
+            "Send an email",
+            "to: recipient email",
+            "subject: email subject",
+            Some("v2"),
+        );
+
+        assert!(formatted.contains("send email to john about meeting"));
+        assert!(formatted.contains("Send an email"));
+        assert!(formatted.contains("to: recipient email"));
     }
 }
