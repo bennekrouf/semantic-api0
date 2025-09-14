@@ -119,36 +119,31 @@ impl ConversationManager {
         conversations.get(conversation_id).cloned()
     }
 
-    pub async fn get_messages(&self, conversation_id: &str) -> Option<Vec<ConversationMessage>> {
-        let messages = self.messages.read().await;
-        messages.get(conversation_id).cloned()
-    }
-
-    pub async fn cleanup_old_conversations(&self, max_age_hours: u64) {
-        let cutoff = chrono::Utc::now() - chrono::Duration::hours(max_age_hours as i64);
-        let mut to_remove = Vec::new();
-
-        {
-            let conversations = self.conversations.read().await;
-            for (id, metadata) in conversations.iter() {
-                if metadata.last_activity < cutoff {
-                    to_remove.push(id.clone());
-                }
-            }
-        }
-
-        if !to_remove.is_empty() {
-            let mut conversations = self.conversations.write().await;
-            let mut messages = self.messages.write().await;
-
-            for id in &to_remove {
-                conversations.remove(id);
-                messages.remove(id);
-            }
-
-            info!("Cleaned up {} old conversations", to_remove.len());
-        }
-    }
+    // pub async fn cleanup_old_conversations(&self, max_age_hours: u64) {
+    //     let cutoff = chrono::Utc::now() - chrono::Duration::hours(max_age_hours as i64);
+    //     let mut to_remove = Vec::new();
+    //
+    //     {
+    //         let conversations = self.conversations.read().await;
+    //         for (id, metadata) in conversations.iter() {
+    //             if metadata.last_activity < cutoff {
+    //                 to_remove.push(id.clone());
+    //             }
+    //         }
+    //     }
+    //
+    //     if !to_remove.is_empty() {
+    //         let mut conversations = self.conversations.write().await;
+    //         let mut messages = self.messages.write().await;
+    //
+    //         for id in &to_remove {
+    //             conversations.remove(id);
+    //             messages.remove(id);
+    //         }
+    //
+    //         info!("Cleaned up {} old conversations", to_remove.len());
+    //     }
+    // }
 }
 
 impl Default for ConversationManager {

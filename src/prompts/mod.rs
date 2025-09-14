@@ -69,21 +69,6 @@ impl PromptManager {
             .replace("{endpoints_list}", endpoints_list)
     }
 
-    pub fn format_find_endpoint(
-        &self,
-        input_sentence: &str,
-        actions_list: &str,
-        version: Option<&str>,
-    ) -> String {
-        let template = self
-            .get_prompt("find_endpoint", version)
-            .unwrap_or_default();
-
-        template
-            .replace("{input_sentence}", input_sentence)
-            .replace("{actions_list}", actions_list)
-    }
-
     pub fn format_find_endpoint_v2(
         &self,
         input_sentence: &str,
@@ -124,20 +109,6 @@ impl PromptManager {
             .replace("{endpoint_description}", endpoint_description)
             .replace("{required_params}", required_params)
             .replace("{optional_params}", optional_params)
-    }
-
-    pub fn list_versions(&self, prompt_name: &str) -> Option<Vec<String>> {
-        self.config
-            .prompts
-            .get(prompt_name)
-            .map(|p| p.versions.keys().cloned().collect())
-    }
-
-    pub fn get_default_version(&self, prompt_name: &str) -> Option<&str> {
-        self.config
-            .prompts
-            .get(prompt_name)
-            .map(|p| p.default_version.as_str())
     }
 }
 

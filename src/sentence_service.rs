@@ -1,8 +1,6 @@
 // src/sentence_service.rs
 use crate::analyze_sentence::analyze_sentence_enhanced;
-use crate::conversation::{
-    ConversationManager, StartConversationRequest, StartConversationResponse,
-};
+use crate::conversation::ConversationManager;
 use crate::models::providers::ModelProvider;
 use crate::progressive_matching::{
     integrate_progressive_matching, ParameterValue, ProgressiveMatchingManager,
@@ -81,39 +79,6 @@ impl SentenceAnalyzeService {
             .and_then(|v| v.to_str().ok())
             .unwrap_or("unknown-client")
             .to_string()
-    }
-
-    pub async fn start_conversation(
-        &self,
-        request: StartConversationRequest,
-    ) -> Result<StartConversationResponse, Box<dyn std::error::Error + Send + Sync>> {
-        match crate::utils::email::validate_email(&request.email) {
-            Ok(_) => {}
-            Err(e) => {
-                return Ok(StartConversationResponse {
-                    conversation_id: String::new(),
-                    success: false,
-                    message: format!("Invalid email: {}", e),
-                });
-            }
-        }
-
-        match self
-            .conversation_manager
-            .start_conversation(request.email.clone(), request.api_url.clone())
-            .await
-        {
-            Ok(conversation_id) => Ok(StartConversationResponse {
-                conversation_id,
-                success: true,
-                message: "Conversation started successfully".to_string(),
-            }),
-            Err(e) => Ok(StartConversationResponse {
-                conversation_id: String::new(),
-                success: false,
-                message: format!("Failed to start conversation: {}", e),
-            }),
-        }
     }
 
     async fn ensure_conversation_id(
@@ -485,4 +450,3 @@ impl SentenceService for SentenceAnalyzeService {
         }
     }
 }
-

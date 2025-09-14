@@ -1,7 +1,9 @@
 // src/progressive_matching.rs
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, SqlitePool};
+use std::env;
 use std::error::Error;
+use std::path::PathBuf;
 use tracing::{debug, info};
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -34,6 +36,29 @@ pub struct ProgressiveMatchResult {
 
 pub struct ProgressiveMatchingManager {
     pool: SqlitePool,
+}
+
+pub fn get_database_url() -> Result<String, Box<dyn Error + Send + Sync>> {
+    // First check if DATABASE_URL is explicitly set
+    if let Ok(url) = env::var("DATABASE_URL") {
+        return Ok(url);
+    }
+
+    // Require DB_PATH to be set - no fallback
+    let db_path_str =
+        env::var("DB_PATH").map_err(|_| "DB_PATH environment variable must be set")?;
+
+    let db_dir = PathBuf::from(&db_path_str);
+
+    // Create directory if it doesn't exist
+    if !db_dir.exists() {
+        std::fs::create_dir_all(&db_dir)?;
+    }
+
+    let db_file = db_dir.join("conversations.db");
+    let db_url = format!("sqlite:{}", db_file.to_string_lossy());
+
+    Ok(db_url)
 }
 
 impl ProgressiveMatchingManager {
@@ -175,60 +200,6 @@ impl ProgressiveMatchingManager {
             completion_percentage,
             ready_for_execution: is_complete,
         })
-    }
-
-    // Clear ongoing match after successful execution
-    pub async fn clear_match(
-        &self,
-        conversation_id: &str,
-        endpoint_id: &str,
-    ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        sqlx::query("DELETE FROM ongoing_matches WHERE conversation_id = ? AND endpoint_id = ?")
-            .bind(conversation_id)
-            .bind(endpoint_id)
-            .execute(&self.pool)
-            .await?;
-
-        info!(
-            "Cleared progressive match for conversation: {} endpoint: {}",
-            conversation_id, endpoint_id
-        );
-        Ok(())
-    }
-
-    // Get all ongoing matches for a conversation
-    pub async fn get_all_matches(
-        &self,
-        conversation_id: &str,
-    ) -> Result<Vec<OngoingMatch>, Box<dyn Error + Send + Sync>> {
-        let results = sqlx::query_as::<_, OngoingMatch>(
-            "SELECT * FROM ongoing_matches WHERE conversation_id = ? ORDER BY updated_at DESC",
-        )
-        .bind(conversation_id)
-        .fetch_all(&self.pool)
-        .await?;
-
-        Ok(results)
-    }
-
-    // Cleanup old matches (optional maintenance)
-    pub async fn cleanup_old_matches(
-        &self,
-        days_old: i64,
-    ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        let cutoff = chrono::Utc::now() - chrono::Duration::days(days_old);
-        let cutoff_str = cutoff.to_rfc3339();
-
-        let deleted = sqlx::query("DELETE FROM ongoing_matches WHERE updated_at < ?")
-            .bind(cutoff_str)
-            .execute(&self.pool)
-            .await?;
-
-        info!(
-            "Cleaned up {} old progressive matches",
-            deleted.rows_affected()
-        );
-        Ok(())
     }
 }
 

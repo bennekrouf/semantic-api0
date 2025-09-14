@@ -1,6 +1,7 @@
 use crate::endpoint_client::verify_endpoints_configuration;
 use crate::models::config::load_server_config;
 use crate::models::providers::ModelProvider;
+use crate::progressive_matching::get_database_url;
 use crate::sentence_service::sentence::sentence_service_server::SentenceServiceServer;
 use crate::sentence_service::SentenceAnalyzeService;
 use std::sync::Arc;
@@ -9,7 +10,6 @@ use tonic_reflection::server::Builder;
 use tonic_web::GrpcWebLayer;
 use tower_http::cors::{Any, CorsLayer};
 use tracing::{error, info};
-
 // In src/grpc_server.rs
 pub async fn start_sentence_grpc_server(
     provider: Arc<dyn ModelProvider>,
@@ -67,8 +67,9 @@ pub async fn start_sentence_grpc_server(
     // Use the provider that was passed in from main.rs
     // In src/grpc_server.rs, change the initialization to:
 
-    let sentence_service = match std::env::var("DATABASE_URL") {
+    let sentence_service = match get_database_url() {
         Ok(db_url) => {
+            info!("Using database URL: {}", db_url);
             match SentenceAnalyzeService::with_progressive_matching(
                 provider.clone(),
                 api_url.clone(),
@@ -78,33 +79,16 @@ pub async fn start_sentence_grpc_server(
             {
                 Ok(service) => service,
                 Err(e) => {
-                    error!("1 - Failed to initialize with progressive matching: {}", e);
+                    error!("Failed to initialize with progressive matching: {}", e);
                     info!("Falling back to service without progressive matching");
                     SentenceAnalyzeService::new(provider, api_url)
                 }
             }
         }
-        Err(_) => {
-            if let Err(e) = std::fs::create_dir_all("./data") {
-                error!("Failed to create data directory: {}", e);
-            }
-
-            // let default_db = "./daa/conversations.db";
-            let default_db = "sqlite:data/conversations.db"; // Remove ./data/ prefix
-            match SentenceAnalyzeService::with_progressive_matching(
-                provider.clone(),
-                api_url.clone(),
-                default_db,
-            )
-            .await
-            {
-                Ok(service) => service,
-                Err(e) => {
-                    error!("2 - Failed to initialize with progressive matching: {}", e);
-                    info!("Falling back to service without progressive matching");
-                    SentenceAnalyzeService::new(provider, api_url)
-                }
-            }
+        Err(e) => {
+            error!("Failed to resolve database path: {}", e);
+            info!("Falling back to service without progressive matching");
+            SentenceAnalyzeService::new(provider, api_url)
         }
     };
     let service = SentenceServiceServer::new(sentence_service);
