@@ -90,7 +90,7 @@ pub async fn start_sentence_grpc_server(
             }
 
             // let default_db = "./daa/conversations.db";
-            let default_db = "sqlite:conversations.db"; // Remove ./data/ prefix
+            let default_db = "sqlite:data/conversations.db"; // Remove ./data/ prefix
             match SentenceAnalyzeService::with_progressive_matching(
                 provider.clone(),
                 api_url.clone(),
