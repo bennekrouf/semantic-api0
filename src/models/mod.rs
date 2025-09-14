@@ -10,16 +10,6 @@ pub struct MissingField {
     pub description: String,
 }
 
-#[derive(Serialize, Debug)]
-pub struct GenerateRequest {
-    pub model: String,
-    pub prompt: String,
-    pub stream: bool,
-    pub format: Option<String>,
-    pub temperature: f32,
-    pub max_tokens: u32,
-}
-
 #[derive(Debug, Deserialize)]
 pub struct OllamaResponse {
     //pub response: String,

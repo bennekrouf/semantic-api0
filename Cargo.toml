@@ -29,7 +29,9 @@ h2 = "0.4.10"
 env = "1.0.1"
 uuid = { version = "1.18.1", features = ["v4", "serde"] }
 chrono = { version = "0.4.42", features = ["serde"] }
-sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "sqlite", "chrono"] }
+rusqlite = { version = "0.37.0", features = ["bundled"] }
+mobc = "0.8.5"
+thiserror = "2.0.16"
 
 [build-dependencies]
 tonic-build = "0.12.3"
