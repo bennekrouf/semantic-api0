@@ -78,7 +78,7 @@ pub async fn start_sentence_grpc_server(
             {
                 Ok(service) => service,
                 Err(e) => {
-                    error!("Failed to initialize with progressive matching: {}", e);
+                    error!("1 - Failed to initialize with progressive matching: {}", e);
                     info!("Falling back to service without progressive matching");
                     SentenceAnalyzeService::new(provider, api_url)
                 }
@@ -100,7 +100,7 @@ pub async fn start_sentence_grpc_server(
             {
                 Ok(service) => service,
                 Err(e) => {
-                    error!("Failed to initialize with progressive matching: {}", e);
+                    error!("2 - Failed to initialize with progressive matching: {}", e);
                     info!("Falling back to service without progressive matching");
                     SentenceAnalyzeService::new(provider, api_url)
                 }
