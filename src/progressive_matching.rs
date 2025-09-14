@@ -38,6 +38,8 @@ pub struct ProgressiveMatchingManager {
 
 impl ProgressiveMatchingManager {
     pub async fn new(database_url: &str) -> Result<Self, Box<dyn Error + Send + Sync>> {
+        println!("Creating database at: {}", database_url);
+        println!("Current working directory: {:?}", std::env::current_dir());
         let pool = SqlitePool::connect(database_url).await?;
 
         // Create table if it doesn't exist
