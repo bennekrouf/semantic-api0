@@ -49,10 +49,10 @@ pub async fn find_closest_endpoint_pure_llm(
     // Use the provider to get LLM response
     info!("Using LLM for semantic endpoint selection");
     let raw_response = provider.generate(&prompt, model_config).await?;
-    debug!("Raw LLM response: '{}'", raw_response);
+    debug!("Raw LLM response: '{:?}'", raw_response);
 
     // Extract endpoint ID from response
-    let endpoint_id = raw_response.trim();
+    let endpoint_id = raw_response.content.trim();
 
     if endpoint_id == "NO_MATCH" {
         error!("LLM determined no suitable endpoint matches the input");
@@ -145,4 +145,3 @@ pub async fn find_closest_endpoint(
         parameters: enhanced_result.parameters,
     })
 }
-

@@ -1,8 +1,9 @@
 // src/progressive_matching.rs - Using custom SQLite connection manager
-use mobc::{Connection as MobcConnection, Manager, Pool};
+use mobc::{Manager, Pool};
 use rusqlite::OptionalExtension;
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
+use std::env;
 use std::error::Error;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -12,7 +13,7 @@ use thiserror::Error;
 use tracing::{debug, info};
 
 pub type MobcSQLitePool = Pool<SQLiteConnectionManager>;
-pub type MobcSQLiteConnection = MobcConnection<SQLiteConnectionManager>;
+// pub type MobcSQLiteConnection = MobcConnection<SQLiteConnectionManager>;
 
 #[derive(Debug, Error)]
 pub enum DbPoolError {
@@ -294,22 +295,50 @@ pub async fn integrate_progressive_matching(
     Ok(result)
 }
 
-use std::env;
-
 pub fn get_database_url() -> Result<String, Box<dyn Error + Send + Sync>> {
     if let Ok(url) = env::var("DATABASE_URL") {
         return Ok(url);
     }
 
-    let db_path_str =
-        env::var("DB_PATH").map_err(|_| "DB_PATH environment variable must be set")?;
-
+    let db_path_str = env::var("DB_PATH").unwrap_or_else(|_| "./data".to_string());
     let db_dir = PathBuf::from(&db_path_str);
 
+    // Debug info
+    println!(
+        "Creating database at: {}",
+        format!("sqlite:{}/conversations.db", db_dir.display())
+    );
+    println!("Current working directory: {:?}", std::env::current_dir());
+    println!("Database directory exists: {}", db_dir.exists());
+    println!(
+        "Database directory permissions: {:?}",
+        std::fs::metadata(&db_dir)
+    );
+
     if !db_dir.exists() {
-        std::fs::create_dir_all(&db_dir)?;
+        match std::fs::create_dir_all(&db_dir) {
+            Ok(_) => println!("Successfully created directory: {}", db_dir.display()),
+            Err(e) => {
+                println!("Failed to create directory {}: {}", db_dir.display(), e);
+                return Err(format!("Cannot create database directory: {}", e).into());
+            }
+        }
     }
 
     let db_file = db_dir.join("conversations.db");
-    Ok(db_file.to_string_lossy().to_string())
+
+    // Test if we can create/write to the database file
+    match std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .open(&db_file)
+    {
+        Ok(_) => println!("Successfully tested database file access"),
+        Err(e) => {
+            println!("Cannot access database file {}: {}", db_file.display(), e);
+            return Err(format!("Cannot access database file: {}", e).into());
+        }
+    }
+
+    Ok(format!("sqlite:{}", db_file.display()))
 }

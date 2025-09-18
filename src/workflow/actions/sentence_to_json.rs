@@ -6,7 +6,6 @@ use crate::prompts::PromptManager;
 use std::{error::Error, sync::Arc};
 use tracing::{debug, error, info};
 
-// Original function for backward compatibility
 pub async fn sentence_to_json(
     sentence: &str,
     provider: Arc<dyn ModelProvider>,
@@ -14,14 +13,24 @@ pub async fn sentence_to_json(
     let prompt_manager = PromptManager::new().await?;
     let full_prompt = prompt_manager.format_sentence_to_json(sentence, Some("v1"));
 
-    // Load model configuration
     let models_config = load_models_config().await?;
     let model_config = &models_config.sentence_to_json;
 
-    let full_response_text = provider.generate(&full_prompt, model_config).await?;
-    debug!("Raw LLM response:\n{}", full_response_text);
+    let result = provider.generate(&full_prompt, model_config).await?;
 
-    let parsed_json = sanitize_json(&full_response_text)?;
+    // Log token usage
+    debug!(
+        provider = provider.get_model_name(),
+        estimated = result.usage.estimated,
+        input_tokens = result.usage.input_tokens,
+        output_tokens = result.usage.output_tokens,
+        total_tokens = result.usage.total_tokens,
+        "sentence_to_json LLM request completed"
+    );
+
+    debug!("Raw LLM response:\n{}", result.content);
+
+    let parsed_json = sanitize_json(&result.content)?;
 
     // Validate the JSON structure for v1 format
     if !parsed_json.is_object() || !parsed_json.get("endpoints").is_some() {
@@ -101,14 +110,14 @@ pub async fn sentence_to_json_structured(
     let models_config = load_models_config().await?;
     let model_config = &models_config.sentence_to_json;
 
-    let full_response_text = provider.generate(&full_prompt, model_config).await?;
+    let result = provider.generate(&full_prompt, model_config).await?;
     debug!(
-        "Raw LLM response for structured extraction:\n{}",
-        full_response_text
+        "Raw LLM response for structured extraction:\n{:?}",
+        result.content
     );
 
     // Parse the JSON response
-    let parsed_json = sanitize_json(&full_response_text)?;
+    let parsed_json = sanitize_json(&result.content)?;
     debug!("Parsed JSON: {:?}", parsed_json);
 
     // Validate that we got an object (not the old endpoints array format)

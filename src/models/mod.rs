@@ -69,6 +69,8 @@ pub struct EnhancedAnalysisResult {
     pub raw_json: serde_json::Value,
     pub conversation_id: Option<String>,
     pub matching_info: MatchingInfo,
+    pub total_input_tokens: u32,
+    pub total_output_tokens: u32,
 }
 
 #[derive(Debug, Serialize, Clone)]

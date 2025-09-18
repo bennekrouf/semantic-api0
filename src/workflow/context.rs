@@ -23,6 +23,8 @@ pub struct WorkflowContext {
     pub endpoint_id: Option<String>,
     pub endpoint_description: Option<String>,
     pub provider: Arc<dyn ModelProvider>,
+    pub total_input_tokens: u32,
+    pub total_output_tokens: u32,
 }
 
 impl WorkflowContext {
@@ -40,8 +42,15 @@ impl WorkflowContext {
             parameters: vec![],
             endpoint_id: None,
             endpoint_description: None,
+            total_input_tokens: 0,
+            total_output_tokens: 0,
         }
     }
+
+    // pub fn add_token_usage(&mut self, usage: &TokenUsage) {
+    //     self.total_input_tokens += usage.input_tokens;
+    //     self.total_output_tokens += usage.output_tokens;
+    // }
 }
 
 // Manually implement Debug to handle the provider field

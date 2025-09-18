@@ -1,5 +1,5 @@
 // src/models/providers/claude.rs
-use super::{ModelConfig, ModelProvider, ProviderConfig};
+use super::{GenerationResult, ModelConfig, ModelProvider, ProviderConfig, TokenCounter};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
@@ -56,7 +56,7 @@ impl ModelProvider for ClaudeProvider {
         &self,
         prompt: &str,
         config: &ModelConfig,
-    ) -> Result<String, Box<dyn Error + Send + Sync>> {
+    ) -> Result<GenerationResult, Box<dyn Error + Send + Sync>> {
         debug!("Generating response with Claude API");
 
         let request = ClaudeRequest {
@@ -89,21 +89,27 @@ impl ModelProvider for ClaudeProvider {
             return Err(format!("Claude request failed: {} - {}", status, error_text).into());
         }
 
-        let response_json: ClaudeResponse = response.json().await?;
+        // Get raw JSON first for token extraction
+        let response_json: serde_json::Value = response.json().await?;
 
-        let content = response_json
-            .content
-            .first()
+        let content = response_json["content"][0]["text"]
+            .as_str()
             .ok_or("No content in Claude response")?
-            .text
-            .clone();
+            .to_string();
 
         if content.trim().is_empty() {
             error!("Received empty response from Claude");
             return Err("Empty response from Claude".into());
         }
 
+        let counter = TokenCounter::new();
+        let usage = counter.from_api_response(&response_json, prompt, &content, "claude");
+
         info!("Successfully received response from Claude API");
-        Ok(content)
+        Ok(GenerationResult { content, usage })
+    }
+
+    fn get_model_name(&self) -> &str {
+        "claude"
     }
 }

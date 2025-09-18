@@ -196,6 +196,8 @@ impl SentenceService for SentenceAnalyzeService {
                         client_id = %client_id,
                         email = %email_clone,
                         conversation_id = %conversation_id_clone,
+                        total_input_tokens = enhanced_result.total_input_tokens,
+                        total_output_tokens = enhanced_result.total_output_tokens,
                         "Analysis completed"
                     );
 
@@ -435,10 +437,10 @@ impl SentenceService for SentenceAnalyzeService {
         let model_config = &models_config.sentence_to_json;
 
         match self.provider.generate(&message, model_config).await {
-            Ok(response_text) => {
+            Ok(result) => {
                 tracing::info!("Successfully generated response");
                 Ok(Response::new(MessageResponse {
-                    response: response_text,
+                    response: result.content,
                     success: true,
                     conversation_id: Some(conversation_id),
                 }))

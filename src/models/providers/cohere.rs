@@ -1,9 +1,9 @@
 // src/models/providers/cohere.rs
-use super::{ModelConfig, ModelProvider, ProviderConfig};
+use super::{GenerationResult, ModelConfig, ModelProvider, ProviderConfig, TokenCounter};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
-use tracing::{debug, error, info};
+use tracing::{debug, error};
 
 pub struct CohereProvider {
     api_key: String,
@@ -59,7 +59,7 @@ impl ModelProvider for CohereProvider {
         &self,
         prompt: &str,
         config: &ModelConfig,
-    ) -> Result<String, Box<dyn Error + Send + Sync>> {
+    ) -> Result<GenerationResult, Box<dyn Error + Send + Sync>> {
         debug!("Generating response with Cohere API");
 
         let request = CohereRequest {
@@ -95,20 +95,16 @@ impl ModelProvider for CohereProvider {
         // Cohere API response format may vary, adjust based on actual response structure
         let content = response_json["text"]
             .as_str()
-            .or_else(|| response_json["message"].as_str())
-            .or_else(|| {
-                // Check if it's in a nested structure
-                response_json["response"]["text"].as_str()
-            })
-            .ok_or("Invalid response format from Cohere API")?
+            .ok_or("No text in response")?
             .to_string();
 
-        if content.trim().is_empty() {
-            error!("Received empty response from Cohere");
-            return Err("Empty response from Cohere".into());
-        }
+        let counter = TokenCounter::new();
+        let usage = counter.from_api_response(&response_json, prompt, &content, "cohere");
 
-        info!("Successfully received response from Cohere API");
-        Ok(content)
+        Ok(GenerationResult { content, usage })
+    }
+
+    fn get_model_name(&self) -> &str {
+        "cohere"
     }
 }

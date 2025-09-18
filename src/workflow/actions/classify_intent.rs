@@ -27,10 +27,10 @@ pub async fn classify_intent(
     let model_config = &models_config.intent_classification;
 
     let response = provider.generate(&prompt, model_config).await?;
-    debug!("Intent classification response: {}", response);
+    debug!("Intent classification response: {:?}", response);
 
     // Direct keyword extraction - search entire response
-    let response_upper = response.to_uppercase();
+    let response_upper = response.content.to_uppercase();
 
     if response_upper.contains("ACTIONABLE") {
         info!("Found 'ACTIONABLE' - classified as actionable request");

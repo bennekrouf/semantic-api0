@@ -318,6 +318,8 @@ steps:
                 parameters: parameter_matches,
                 raw_json: context.json_output.ok_or("JSON output not available")?,
                 matching_info,
+                total_input_tokens: context.total_input_tokens,
+                total_output_tokens: context.total_output_tokens,
             })
         }
 
@@ -325,7 +327,7 @@ steps:
             info!("Processing as general question - generating conversational response");
 
             // Handle general questions with a simple response
-            let conversational_response = handle_general_question(sentence, provider).await?;
+            let conversational_result = handle_general_question(sentence, provider).await?;
 
             let matching_info = MatchingInfo {
                 status: MatchingStatus::Complete, // General questions are always "complete"
@@ -349,14 +351,16 @@ steps:
                 essential_path: "/general".to_string(),
                 api_group_id: "conversation".to_string(),
                 api_group_name: "Conversation API".to_string(),
-                parameters: vec![], // No parameters for general questions
+                parameters: vec![],
                 raw_json: serde_json::json!({
                     "type": "general_conversation",
-                    "response": conversational_response,
+                    "response": conversational_result.content,  // Use .content
                     "intent": "general_question"
                 }),
                 conversation_id,
                 matching_info,
+                total_input_tokens: conversational_result.usage.input_tokens, // Track actual tokens
+                total_output_tokens: conversational_result.usage.output_tokens, // Track actual tokens
             })
         }
     }

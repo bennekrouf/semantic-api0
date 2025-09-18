@@ -54,9 +54,9 @@ pub async fn match_fields_semantic(
     let models_config = load_models_config().await?;
     let model_config = &models_config.sentence_to_json;
 
-    let response = provider.generate(&prompt, model_config).await?;
+    let result = provider.generate(&prompt, model_config).await?;
 
-    let json_response = sanitize_json(&response)?;
+    let json_response = sanitize_json(&result.content)?;
 
     debug!("Semantic matching response: {:?}", json_response);
 
@@ -107,4 +107,3 @@ pub async fn match_fields_semantic(
 
     Ok(matched_fields)
 }
-

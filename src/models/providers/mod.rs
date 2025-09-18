@@ -2,9 +2,17 @@
 use async_trait::async_trait;
 use serde::Deserialize;
 use std::error::Error;
+use token_counter::{TokenCounter, TokenUsage};
 
 pub mod claude;
 pub mod cohere;
+pub mod token_counter;
+
+#[derive(Debug)]
+pub struct GenerationResult {
+    pub content: String,
+    pub usage: TokenUsage,
+}
 
 #[async_trait]
 pub trait ModelProvider: Send + Sync {
@@ -12,7 +20,9 @@ pub trait ModelProvider: Send + Sync {
         &self,
         prompt: &str,
         model: &ModelConfig,
-    ) -> Result<String, Box<dyn Error + Send + Sync>>;
+    ) -> Result<GenerationResult, Box<dyn Error + Send + Sync>>;
+
+    fn get_model_name(&self) -> &str;
 }
 
 #[derive(Debug, Deserialize, Clone, Default)]
@@ -55,5 +65,21 @@ pub fn create_provider(
         }
     } else {
         None
+    }
+}
+
+pub struct ProviderWithTokens<T> {
+    inner: T,
+    counter: TokenCounter,
+    model_name: String,
+}
+
+impl<T> ProviderWithTokens<T> {
+    pub fn new(inner: T, model_name: String) -> Self {
+        Self {
+            inner,
+            counter: TokenCounter::new(),
+            model_name,
+        }
     }
 }
