@@ -3,6 +3,7 @@ pub mod providers;
 
 pub use providers::ModelsConfig;
 use serde::{Deserialize, Serialize};
+// use std::collections::HashSet;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MissingField {
@@ -62,6 +63,7 @@ pub struct EnhancedAnalysisResult {
     pub verb: String,
     pub base: String,
     pub path: String,
+    pub user_prompt: Option<String>,
     pub essential_path: String,
     pub api_group_id: String,
     pub api_group_name: String,
@@ -108,7 +110,16 @@ impl MatchingInfo {
         let mut missing_required = Vec::new();
         let mut missing_optional = Vec::new();
 
+        // Use a HashSet to track processed parameter names to avoid duplicates
+        let mut processed_params = std::collections::HashSet::new();
+
         for endpoint_param in endpoint_params {
+            // Skip if we've already processed this parameter name
+            if processed_params.contains(&endpoint_param.name) {
+                continue;
+            }
+            processed_params.insert(endpoint_param.name.clone());
+
             let is_required = endpoint_param.required.unwrap_or(false);
             let is_mapped = parameters
                 .iter()
@@ -160,6 +171,68 @@ impl MatchingInfo {
             completion_percentage,
             missing_required_fields: missing_required,
             missing_optional_fields: missing_optional,
+        }
+    }
+
+    /// Generate a natural language prompt for missing fields
+    pub fn generate_user_prompt(&self, endpoint_name: &str) -> Option<String> {
+        if self.missing_required_fields.is_empty() {
+            return None;
+        }
+
+        let missing_count = self.missing_required_fields.len();
+
+        match missing_count {
+            1 => {
+                let field = &self.missing_required_fields[0];
+                Some(format!(
+                    "To proceed with {}, I need one more piece of information: {}. Could you please provide that?",
+                    endpoint_name.to_lowercase(),
+                    Self::format_field_request(&field.name, &field.description)
+                ))
+            }
+            2 => {
+                let field1 = &self.missing_required_fields[0];
+                let field2 = &self.missing_required_fields[1];
+                Some(format!(
+                    "To complete your {} request, I need {} and {}. Could you provide these details?",
+                    endpoint_name.to_lowercase(),
+                    Self::format_field_request(&field1.name, &field1.description),
+                    Self::format_field_request(&field2.name, &field2.description)
+                ))
+            }
+            _ => {
+                let field_list: Vec<String> = self
+                    .missing_required_fields
+                    .iter()
+                    .map(|f| Self::format_field_request(&f.name, &f.description))
+                    .collect();
+
+                let (initial_fields, last_field) = field_list.split_at(field_list.len() - 1);
+
+                Some(format!(
+                    "To process your {} request, I need a few more details: {}, and {}. Could you provide this information?",
+                    endpoint_name.to_lowercase(),
+                    initial_fields.join(", "),
+                    last_field[0]
+                ))
+            }
+        }
+    }
+
+    fn format_field_request(field_name: &str, field_description: &str) -> String {
+        // Convert snake_case to natural language
+        let natural_name = field_name.replace('_', " ").replace('-', " ");
+
+        // Use description if it's more descriptive than the field name
+        if field_description.len() > natural_name.len() + 5
+            && !field_description
+                .to_lowercase()
+                .starts_with("missing parameter")
+        {
+            field_description.to_lowercase()
+        } else {
+            format!("the {}", natural_name)
         }
     }
 }

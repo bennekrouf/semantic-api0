@@ -336,6 +336,9 @@ steps:
 
     let matching_info = MatchingInfo::compute(&parameter_matches, &enhanced_endpoint.parameters);
 
+    // Generate user prompt for missing fields
+    let user_prompt = matching_info.generate_user_prompt(&enhanced_endpoint.name);
+
     // Return enhanced result with complete endpoint metadata
     Ok(EnhancedAnalysisResult {
         conversation_id,
@@ -351,6 +354,7 @@ steps:
         parameters: parameter_matches,
         raw_json: context.json_output.ok_or("JSON output not available")?,
         matching_info,
+        user_prompt, // Add the generated user prompt
         total_input_tokens: context.total_input_tokens,
         total_output_tokens: context.total_output_tokens,
     })
@@ -449,6 +453,7 @@ pub async fn analyze_sentence_enhanced(
                             }),
                             conversation_id,
                             matching_info,
+                            user_prompt: None, // No missing fields for general conversation
                             total_input_tokens: conversational_result.usage.input_tokens,
                             total_output_tokens: conversational_result.usage.output_tokens,
                         })
@@ -495,6 +500,7 @@ pub async fn analyze_sentence_enhanced(
                 }),
                 conversation_id,
                 matching_info,
+                user_prompt: None, // No missing fields for general conversation
                 total_input_tokens: conversational_result.usage.input_tokens, // Track actual tokens
                 total_output_tokens: conversational_result.usage.output_tokens, // Track actual tokens
             })
