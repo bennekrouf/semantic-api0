@@ -12,7 +12,7 @@ use crate::workflow::{WorkflowConfig, WorkflowContext, WorkflowEngine, WorkflowS
 use async_trait::async_trait;
 use std::error::Error;
 use std::sync::Arc;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 // Enhanced configuration loading step that extends the existing workflow
 pub struct EnhancedConfigurationLoadingStep {
@@ -184,40 +184,74 @@ impl WorkflowStep for FieldMatchingStep {
     }
 }
 
-// Enhanced analysis function with intent classification
-pub async fn analyze_sentence_enhanced(
+// Retry logic for actionable analysis
+async fn analyze_with_retry(
+    sentence: &str,
+    provider: Arc<dyn ModelProvider>,
+    api_url: Option<String>,
+    email: &str,
+    conversation_id: Option<String>,
+    retry_attempts: u32,
+) -> Result<EnhancedAnalysisResult, Box<dyn Error + Send + Sync>> {
+    let mut last_error = None;
+
+    for attempt in 1..=retry_attempts {
+        info!(
+            "Analysis attempt {}/{} for: {}",
+            attempt, retry_attempts, sentence
+        );
+
+        match try_actionable_analysis(
+            sentence,
+            provider.clone(),
+            api_url.clone(),
+            email,
+            conversation_id.clone(),
+        )
+        .await
+        {
+            Ok(result) => {
+                info!("Analysis succeeded on attempt {}", attempt);
+                return Ok(result);
+            }
+            Err(e) => {
+                let error_msg = e.to_string();
+                if error_msg.contains("No suitable endpoint found")
+                    || error_msg.contains("not found in available endpoints")
+                {
+                    warn!(
+                        "Endpoint matching failed on attempt {}: {}",
+                        attempt, error_msg
+                    );
+                    last_error = Some(e);
+
+                    if attempt < retry_attempts {
+                        // Add small delay between retries
+                        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                        continue;
+                    }
+                } else {
+                    // For other errors, don't retry
+                    return Err(e);
+                }
+            }
+        }
+    }
+
+    // If we get here, all retries failed
+    Err(last_error.unwrap_or_else(|| "Analysis failed after retries".into()))
+}
+
+// Extract the actionable analysis logic into this function
+async fn try_actionable_analysis(
     sentence: &str,
     provider: Arc<dyn ModelProvider>,
     api_url: Option<String>,
     email: &str,
     conversation_id: Option<String>,
 ) -> Result<EnhancedAnalysisResult, Box<dyn Error + Send + Sync>> {
-    if email.is_empty() {
-        return Err("Email is required".into());
-    }
-    validate_email(email)?;
-    info!(
-        "Starting enhanced sentence analysis using workflow engine for: {}",
-        sentence
-    );
-
-    // First, get available endpoints to classify intent
-    let api_url_ref = api_url.as_ref().ok_or("No API URL provided")?;
-    let enhanced_endpoints = get_enhanced_endpoints(api_url_ref, email).await?;
-    let endpoint_descriptions: Vec<String> = enhanced_endpoints
-        .iter()
-        .map(|e| e.description.clone())
-        .collect();
-
-    // Classify intent first
-    let intent = classify_intent(sentence, &endpoint_descriptions, provider.clone()).await?;
-
-    match intent {
-        IntentType::ActionableRequest => {
-            info!("Processing as actionable request - running full workflow");
-
-            // Run the full workflow for actionable requests
-            const ENHANCED_WORKFLOW_CONFIG: &str = r#"
+    // Run the full workflow for actionable requests
+    const ENHANCED_WORKFLOW_CONFIG: &str = r#"
 steps:
   - name: enhanced_configuration_loading
     enabled: true
@@ -241,86 +275,188 @@ steps:
       delay_ms: 500
 "#;
 
-            let config: WorkflowConfig = serde_yaml::from_str(ENHANCED_WORKFLOW_CONFIG)?;
-            let mut engine = WorkflowEngine::new();
+    let config: WorkflowConfig = serde_yaml::from_str(ENHANCED_WORKFLOW_CONFIG)?;
+    let mut engine = WorkflowEngine::new();
 
-            // Register all workflow steps
-            for step_config in config.steps {
-                match step_config.name.as_str() {
-                    "enhanced_configuration_loading" => {
-                        engine.register_step(
-                            step_config,
-                            Arc::new(EnhancedConfigurationLoadingStep {
-                                api_url: api_url.clone(),
-                                email: email.to_string(),
+    // Register all workflow steps
+    for step_config in config.steps {
+        match step_config.name.as_str() {
+            "enhanced_configuration_loading" => {
+                engine.register_step(
+                    step_config,
+                    Arc::new(EnhancedConfigurationLoadingStep {
+                        api_url: api_url.clone(),
+                        email: email.to_string(),
+                    }),
+                );
+            }
+            "json_generation" => {
+                engine.register_step(step_config, Arc::new(JsonGenerationStep));
+            }
+            "endpoint_matching" => {
+                engine.register_step(
+                    step_config,
+                    Arc::new(EndpointMatchingStep), // Uses the updated implementation
+                );
+            }
+            "field_matching" => {
+                engine.register_step(step_config, Arc::new(FieldMatchingStep));
+            }
+            _ => {
+                error!("Unknown step: {}", step_config.name);
+                return Err(format!("Unknown step: {}", step_config.name).into());
+            }
+        }
+    }
+
+    // Execute the workflow
+    let context = engine.execute(sentence.to_string(), provider).await?;
+
+    // Extract enhanced endpoint data from context
+    let enhanced_endpoint = context
+        .enhanced_endpoints
+        .as_ref()
+        .and_then(|endpoints| {
+            endpoints
+                .iter()
+                .find(|e| context.endpoint_id.as_ref().map_or(false, |id| e.id == *id))
+        })
+        .ok_or("Enhanced endpoint data not found")?;
+
+    // Build parameter matches from workflow results
+    let parameter_matches: Vec<ParameterMatch> = context
+        .parameters
+        .into_iter()
+        .map(|param| ParameterMatch {
+            name: param.name,
+            description: param.description,
+            value: param.semantic_value,
+        })
+        .collect();
+
+    let matching_info = MatchingInfo::compute(&parameter_matches, &enhanced_endpoint.parameters);
+
+    // Return enhanced result with complete endpoint metadata
+    Ok(EnhancedAnalysisResult {
+        conversation_id,
+        endpoint_id: enhanced_endpoint.id.clone(),
+        endpoint_name: enhanced_endpoint.name.clone(),
+        endpoint_description: enhanced_endpoint.description.clone(),
+        verb: enhanced_endpoint.verb.clone(),
+        base: enhanced_endpoint.base.clone(),
+        path: enhanced_endpoint.path.clone(),
+        essential_path: enhanced_endpoint.essential_path.clone(),
+        api_group_id: enhanced_endpoint.api_group_id.clone(),
+        api_group_name: enhanced_endpoint.api_group_name.clone(),
+        parameters: parameter_matches,
+        raw_json: context.json_output.ok_or("JSON output not available")?,
+        matching_info,
+        total_input_tokens: context.total_input_tokens,
+        total_output_tokens: context.total_output_tokens,
+    })
+}
+
+// Enhanced analysis function with intent classification and retry logic
+pub async fn analyze_sentence_enhanced(
+    sentence: &str,
+    provider: Arc<dyn ModelProvider>,
+    api_url: Option<String>,
+    email: &str,
+    conversation_id: Option<String>,
+) -> Result<EnhancedAnalysisResult, Box<dyn Error + Send + Sync>> {
+    if email.is_empty() {
+        return Err("Email is required".into());
+    }
+    validate_email(email)?;
+
+    // Load analysis config with default retry attempts
+    let analysis_config = crate::models::config::load_analysis_config()
+        .await
+        .unwrap_or_default();
+
+    info!(
+        "Starting enhanced sentence analysis with {} retry attempts for: {}",
+        analysis_config.retry_attempts, sentence
+    );
+
+    // First, get available endpoints to classify intent
+    let api_url_ref = api_url.as_ref().ok_or("No API URL provided")?;
+    let enhanced_endpoints = get_enhanced_endpoints(api_url_ref, email).await?;
+    let endpoint_descriptions: Vec<String> = enhanced_endpoints
+        .iter()
+        .map(|e| e.description.clone())
+        .collect();
+
+    // Classify intent first
+    let intent = classify_intent(sentence, &endpoint_descriptions, provider.clone()).await?;
+
+    match intent {
+        IntentType::ActionableRequest => {
+            info!("Processing as actionable request - running workflow with retry logic");
+
+            // Try actionable analysis with retries
+            match analyze_with_retry(
+                sentence,
+                provider.clone(),
+                api_url,
+                email,
+                conversation_id.clone(),
+                analysis_config.retry_attempts,
+            )
+            .await
+            {
+                Ok(result) => Ok(result),
+                Err(e) => {
+                    if analysis_config.fallback_to_general {
+                        warn!(
+                            "All retries failed, falling back to general question handler: {}",
+                            e
+                        );
+
+                        // Fallback to general question handler
+                        let conversational_result =
+                            handle_general_question(sentence, provider).await?;
+
+                        let matching_info = MatchingInfo {
+                            status: MatchingStatus::Complete,
+                            total_required_fields: 0,
+                            mapped_required_fields: 0,
+                            total_optional_fields: 0,
+                            mapped_optional_fields: 0,
+                            completion_percentage: 100.0,
+                            missing_required_fields: vec![],
+                            missing_optional_fields: vec![],
+                        };
+
+                        Ok(EnhancedAnalysisResult {
+                            endpoint_id: "general_conversation_fallback".to_string(),
+                            endpoint_name: "General Conversation (Fallback)".to_string(),
+                            endpoint_description:
+                                "Fallback conversational response after endpoint matching failed"
+                                    .to_string(),
+                            verb: "GET".to_string(),
+                            base: "conversation".to_string(),
+                            path: "/general".to_string(),
+                            essential_path: "/general".to_string(),
+                            api_group_id: "conversation".to_string(),
+                            api_group_name: "Conversation API".to_string(),
+                            parameters: vec![],
+                            raw_json: serde_json::json!({
+                                "type": "general_conversation_fallback",
+                                "response": conversational_result.content,
+                                "intent": "actionable_request_failed",
+                                "fallback_reason": "endpoint_matching_failed_after_retries"
                             }),
-                        );
-                    }
-                    "json_generation" => {
-                        engine.register_step(step_config, Arc::new(JsonGenerationStep));
-                    }
-                    "endpoint_matching" => {
-                        engine.register_step(
-                            step_config,
-                            Arc::new(EndpointMatchingStep), // Uses the updated implementation
-                        );
-                    }
-                    "field_matching" => {
-                        engine.register_step(step_config, Arc::new(FieldMatchingStep));
-                    }
-                    _ => {
-                        error!("Unknown step: {}", step_config.name);
-                        return Err(format!("Unknown step: {}", step_config.name).into());
+                            conversation_id,
+                            matching_info,
+                            total_input_tokens: conversational_result.usage.input_tokens,
+                            total_output_tokens: conversational_result.usage.output_tokens,
+                        })
+                    } else {
+                        Err(e)
                     }
                 }
             }
-
-            // Execute the workflow
-            let context = engine.execute(sentence.to_string(), provider).await?;
-
-            // Extract enhanced endpoint data from context
-            let enhanced_endpoint = context
-                .enhanced_endpoints
-                .as_ref()
-                .and_then(|endpoints| {
-                    endpoints
-                        .iter()
-                        .find(|e| context.endpoint_id.as_ref().map_or(false, |id| e.id == *id))
-                })
-                .ok_or("Enhanced endpoint data not found")?;
-
-            // Build parameter matches from workflow results
-            let parameter_matches: Vec<ParameterMatch> = context
-                .parameters
-                .into_iter()
-                .map(|param| ParameterMatch {
-                    name: param.name,
-                    description: param.description,
-                    value: param.semantic_value,
-                })
-                .collect();
-
-            let matching_info =
-                MatchingInfo::compute(&parameter_matches, &enhanced_endpoint.parameters);
-
-            // Return enhanced result with complete endpoint metadata
-            Ok(EnhancedAnalysisResult {
-                conversation_id,
-                endpoint_id: enhanced_endpoint.id.clone(),
-                endpoint_name: enhanced_endpoint.name.clone(),
-                endpoint_description: enhanced_endpoint.description.clone(),
-                verb: enhanced_endpoint.verb.clone(),
-                base: enhanced_endpoint.base.clone(),
-                path: enhanced_endpoint.path.clone(),
-                essential_path: enhanced_endpoint.essential_path.clone(),
-                api_group_id: enhanced_endpoint.api_group_id.clone(),
-                api_group_name: enhanced_endpoint.api_group_name.clone(),
-                parameters: parameter_matches,
-                raw_json: context.json_output.ok_or("JSON output not available")?,
-                matching_info,
-                total_input_tokens: context.total_input_tokens,
-                total_output_tokens: context.total_output_tokens,
-            })
         }
 
         IntentType::GeneralQuestion => {
@@ -365,3 +501,4 @@ steps:
         }
     }
 }
+

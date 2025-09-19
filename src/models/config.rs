@@ -28,18 +28,30 @@ pub struct EndpointClientConfig {
 }
 
 #[derive(Debug, Deserialize, Clone)]
+pub struct AnalysisConfig {
+    pub retry_attempts: u32,
+    pub fallback_to_general: bool,
+}
+
+impl Default for AnalysisConfig {
+    fn default() -> Self {
+        Self {
+            retry_attempts: 3,
+            fallback_to_general: true,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Clone)]
 pub struct Config {
     pub models: ModelsConfig,
     pub server: ServerConfig,
     pub endpoint_client: EndpointClientConfig,
-    // pub debug_mode: Option<DebugConfig>, // Optional to maintain backward compatibility
+    pub analysis: Option<AnalysisConfig>, // Optional for backward compatibility
 }
 
 #[derive(Debug, Deserialize, Clone, Default)]
-pub struct DebugConfig {
-    // pub enabled: bool,
-    // pub use_local_endpoints: bool,
-}
+pub struct DebugConfig {}
 
 pub async fn load_models_config() -> Result<ModelsConfig, Box<dyn Error + Send + Sync>> {
     let config_path = get_config_path();
@@ -76,3 +88,18 @@ pub async fn load_endpoint_client_config(
 
     Ok(config.endpoint_client)
 }
+
+// Load analysis configuration from config file
+pub async fn load_analysis_config() -> Result<AnalysisConfig, Box<dyn Error + Send + Sync>> {
+    let config_path = get_config_path();
+    let config_str = tokio::fs::read_to_string(&config_path).await?;
+    let config: Config = serde_yaml::from_str(&config_str)?;
+
+    debug!("Loaded analysis configuration from: {}", config_path);
+
+    let analysis_config = config.analysis.unwrap_or_default();
+    debug!("Analysis config: {:#?}", analysis_config);
+
+    Ok(analysis_config)
+}
+

@@ -58,3 +58,7 @@ service:
   version: 1.0.0
   provider: cohere
   api: "http://127.0.0.1:50057"
+
+analysis:
+  retry_attempts: 3
+  fallback_to_general: true
