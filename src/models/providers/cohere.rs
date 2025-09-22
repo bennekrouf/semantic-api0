@@ -1,9 +1,9 @@
-// src/models/providers/cohere.rs
+// src/models/providers/cohere.rs - Fix token extraction
 use super::{GenerationResult, ModelConfig, ModelProvider, ProviderConfig, TokenCounter};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 pub struct CohereProvider {
     api_key: String,
@@ -35,7 +35,19 @@ struct ResponseFormat {
 
 #[derive(Debug, Deserialize)]
 struct CohereResponse {
-    // text: String,
+    text: String,
+    meta: Option<CohereMeta>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CohereMeta {
+    tokens: Option<CohereTokens>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CohereTokens {
+    input_tokens: Option<u32>,
+    output_tokens: Option<u32>,
 }
 
 impl CohereProvider {
@@ -90,16 +102,54 @@ impl ModelProvider for CohereProvider {
             return Err(format!("Cohere request failed: {} - {}", status, error_text).into());
         }
 
+        // Get raw JSON first for token extraction
         let response_json: serde_json::Value = response.json().await?;
+        debug!("Cohere raw response: {:?}", response_json);
 
-        // Cohere API response format may vary, adjust based on actual response structure
         let content = response_json["text"]
             .as_str()
-            .ok_or("No text in response")?
+            .ok_or("No text in Cohere response")?
             .to_string();
 
+        if content.trim().is_empty() {
+            error!("Received empty response from Cohere");
+            return Err("Empty response from Cohere".into());
+        }
+
         let counter = TokenCounter::new();
-        let usage = counter.from_api_response(&response_json, prompt, &content, "cohere");
+
+        // Try to extract actual token usage from Cohere response
+        let usage = if let Some(meta) = response_json.get("meta") {
+            if let Some(tokens) = meta.get("tokens") {
+                let input_tokens = tokens
+                    .get("input_tokens")
+                    .and_then(|t| t.as_u64())
+                    .unwrap_or_else(|| counter.estimate_tokens(prompt, "cohere") as u64)
+                    as u32;
+
+                let output_tokens = tokens
+                    .get("output_tokens")
+                    .and_then(|t| t.as_u64())
+                    .unwrap_or_else(|| counter.estimate_tokens(&content, "cohere") as u64)
+                    as u32;
+
+                crate::models::providers::token_counter::TokenUsage {
+                    input_tokens,
+                    output_tokens,
+                    total_tokens: input_tokens + output_tokens,
+                    estimated: tokens.get("input_tokens").is_none()
+                        || tokens.get("output_tokens").is_none(),
+                }
+            } else {
+                warn!("No token information in Cohere meta, using estimation");
+                counter.from_response(&content, prompt, "cohere")
+            }
+        } else {
+            warn!("No meta field in Cohere response, using estimation");
+            counter.from_response(&content, prompt, "cohere")
+        };
+
+        debug!("Cohere token usage: {:?}", usage);
 
         Ok(GenerationResult { content, usage })
     }

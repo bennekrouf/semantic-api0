@@ -33,11 +33,8 @@ pub async fn find_closest_endpoint_pure_llm(
     let mut endpoints_list = String::new();
     for (index, endpoint) in enhanced_endpoints.iter().enumerate() {
         endpoints_list.push_str(&format!(
-            "{}. ID: {} | Description: {} | Example: {}\n",
-            index + 1,
-            endpoint.id,
-            endpoint.description,
-            endpoint.text
+            "- {} ({})\n", // Remove numbering, use bullet points
+            endpoint.id, endpoint.description
         ));
     }
 

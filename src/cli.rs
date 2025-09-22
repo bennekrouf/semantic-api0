@@ -16,6 +16,9 @@ pub fn display_custom_help() {
 ╰─────────────────────────────────────────────╯
 
 ARGUMENTS:
+  --provider PROVIDER  AI provider to use
+                       Options: cohere, claude, deepseek
+                       Default: cohere
   --email ADDRESS    Your email address 
                      (REQUIRED ONLY when analyzing a sentence)
 
@@ -28,12 +31,17 @@ ARGUMENTS:
 USAGE EXAMPLES:
   1. Start gRPC server (no email required):
      semantic
+     semantic --provider deepseek
   
   2. Analyze text (email required):
      semantic --email user@example.com \"analyze this text\"
+     semantic --provider deepseek --email user@example.com \"analyze this text\"
   
   3. Use remote endpoints:
      semantic --api http://example.com:50053 --email user@example.com \"analyze this\"
+
+  4. Run comparison test:
+     semantic --compare --iterations 10
 
 For more information, use the standard help:
   semantic --help
@@ -80,6 +88,16 @@ pub struct Cli {
     /// List available endpoints for the given email
     #[arg(long, help = "List all available endpoints for the specified email")]
     pub list_endpoints: bool,
+
+    #[arg(long, help = "Run comparison test between models and prompt versions")]
+    pub compare: bool,
+
+    #[arg(
+        long,
+        default_value = "20",
+        help = "Number of iterations per test configuration"
+    )]
+    pub iterations: u32,
 }
 
 // Add this function to handle endpoint listing
@@ -183,6 +201,20 @@ pub async fn handle_cli(
     mut cli: Cli,
     provider: Arc<dyn ModelProvider>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
+    if cli.compare {
+        let config = crate::comparison_test::TestConfig {
+            iterations: cli.iterations,
+            sentence: "tu peux me génèrer un cv pour anthony en fr avec le template keyteo"
+                .to_string(),
+            conversation_id: "e0079e96-6c03-4a98-ab75-98acf2ebc470".to_string(),
+            email: "bennekrouf.mohamed@gmail.com".to_string(),
+            api_url: "http://localhost:50057".to_string(),
+            ..Default::default()
+        };
+        crate::comparison_test::run_custom_comparison(config).await?;
+        return Ok(());
+    }
+
     // Handle list endpoints command
     if cli.list_endpoints {
         let email = match &cli.email {
@@ -270,6 +302,17 @@ pub async fn handle_cli(
             "Endpoint: {} ({})",
             result.endpoint_id, result.endpoint_description
         );
+
+        println!("\nUsage Information:");
+        println!("  Model: {}", result.usage.model);
+        println!("  Input tokens: {}", result.usage.input_tokens);
+        println!("  Output tokens: {}", result.usage.output_tokens);
+        println!("  Total tokens: {}", result.usage.total_tokens);
+        println!(
+            "  Estimated: {}",
+            if result.usage.estimated { "Yes" } else { "No" }
+        );
+
         println!("\nParameters:");
         for param in result.parameters {
             println!("\n{} ({}):", param.name, param.description);

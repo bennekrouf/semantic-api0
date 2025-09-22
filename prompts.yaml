@@ -61,7 +61,7 @@ prompts:
           6. Output ONLY the valid JSON without ANY introduction sentence like here is the json
           7. Output ONLY the valid JSON without ANY explanation after outputing the json
           8. NEVER include trailing commas in the JSON output
-          9. For single field objects, format like: {"field": "value"}          Example input: 'Send email to Alice at alice@example.com which title is New report and body is Hi Alice, here is the new report'
+          9. For single field objects, format like: {"field": "value"}  Example input: 'Send email to Alice at alice@example.com which title is New report and body is Hi Alice, here is the new report'
           Example output:
           Raw JSON string: {
             "endpoints": [
@@ -112,15 +112,17 @@ prompts:
           1. ACTIONABLE: Perform a specific action using one of the available system functions
           2. GENERAL: Ask a general question, request information, or have a conversation
           
-          Examples of ACTIONABLE requests:
-          - "Send an email to John"
-          - "Schedule a meeting for tomorrow" 
-          - "Create a support ticket"
+          Examples of ACTIONABLE requests (any language):
+          - "Send an email to John or Envoyer un email à John"
+          - "Schedule a meeting for tomorrow / Planifier une réunion pour demain"
+          - "Create a support ticket / Créer un ticket de support"
+          - "Generate CV for john-doe / Générer CV pour john-doe"
           
-          Examples of GENERAL questions:
-          - "What is machine learning?"
-          - "How does email work?"
-          - "Tell me about your capabilities"
+          Examples of GENERAL questions (any language):
+          - "What is machine learning? / Qu'est-ce que l'apprentissage automatique?"
+          - "How does email work? / Comment fonctionne l'email?"
+          - "Tell me about your capabilities / Parlez-moi de vos capacités"
           
-          Think through your reasoning, then respond with exactly one word: either "ACTIONABLE" or "GENERAL"
+          The input "Générer CV pour john-doe en français" is clearly requesting CV generation action.
+          Think through your reasoning, then respond with exactly one word which are either ACTIONABLE or GENERAL
     default_version: "v1"

@@ -18,6 +18,14 @@ message Parameter {
   optional string semantic_value = 3;
 }
 
+message Usage {
+  uint32 input_tokens = 1;
+  uint32 output_tokens = 2;
+  uint32 total_tokens = 3;
+  string model = 4;
+  bool estimated = 5;
+}
+
 message SentenceResponse {
   string endpoint_id = 1;
   optional string endpoint_name = 2;
@@ -32,6 +40,8 @@ message SentenceResponse {
   string json_output = 11;
   optional string conversation_id = 12;
   MatchingInfo matching_info = 13;
+  optional string user_prompt = 14;
+  optional Usage usage = 15;
 }
 
 message MessageRequest {

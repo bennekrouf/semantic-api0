@@ -27,23 +27,27 @@ models:
   sentence_to_json:
     cohere: "command-r7b-12-2024"
     claude: "claude-3-5-sonnet-20241022"
+    deepseek: "deepseek-chat"
     temperature: 0.1
     max_tokens: 1000
   find_endpoint:
     cohere: "command-r7b-12-2024"
     claude: "claude-3-5-sonnet-20241022"
+    deepseek: "deepseek-chat"
     temperature: 0.1
     max_tokens: 500
   semantic_match:
     cohere: "command-r7b-12-2024"
     claude: "claude-3-5-sonnet-20241022"
+    deepseek: "deepseek-chat"
     temperature: 0.1
     max_tokens: 500
   intent_classification:
-      cohere: "command-r7b-12-2024"
-      claude: "claude-3-5-sonnet-20241022"
-      temperature: 0.1
-      max_tokens: 50
+    cohere: "command-r7b-12-2024"
+    claude: "claude-3-5-sonnet-20241022"
+    deepseek: "deepseek-chat"
+    temperature: 0.1
+    max_tokens: 50
 
 # Provider configurations
 providers:
@@ -51,6 +55,9 @@ providers:
     enabled: true
     api_key: "" # Will be loaded from .env
   claude:
+    enabled: true
+    api_key: "" # Will be loaded from .env
+  deepseek:
     enabled: true
     api_key: "" # Will be loaded from .env
 service:

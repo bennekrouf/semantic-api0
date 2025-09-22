@@ -2,6 +2,11 @@
 
 A tool that uses LLM to match user inputs with predefined API endpoints based on semantic understanding.
 
+
+ cargo run -- --provider cohere --api http://0.0.0.0:50057
+
+grpcurl -plaintext -d '{"email": "bennekrouf.mohamed@gmail.com"}' 0.0.0.0:50057 endpoint.EndpointService/GetApiGroups
+
 ## Prerequisites
 
 - Rust (latest stable version)

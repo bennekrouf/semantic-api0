@@ -172,6 +172,7 @@ impl SentenceService for SentenceAnalyzeService {
             conversation_id = %conversation_id
         );
 
+        let model = self.provider.get_model_name().to_string();
         let provider_clone = self.provider.clone();
         let api_url_clone = self.api_url.clone();
         let conversation_manager_clone = self.conversation_manager.clone();
@@ -260,6 +261,15 @@ impl SentenceService for SentenceAnalyzeService {
                         tracing::warn!("Failed to save message to conversation history: {}", e);
                     }
 
+                    let usage_info = crate::models::UsageInfo {
+                        input_tokens: enhanced_result.usage.input_tokens,
+                        output_tokens: enhanced_result.usage.output_tokens,
+                        total_tokens: enhanced_result.usage.total_tokens,
+                        model,
+                        estimated: enhanced_result.usage.estimated,
+                    };
+
+                    // In the analyze_sentence method, update the response construction:
                     let response = SentenceResponse {
                         conversation_id: Some(conversation_id_clone.clone()),
                         endpoint_id: enhanced_result.endpoint_id,
@@ -271,6 +281,15 @@ impl SentenceService for SentenceAnalyzeService {
                         essential_path: Some(enhanced_result.essential_path),
                         api_group_id: Some(enhanced_result.api_group_id),
                         api_group_name: Some(enhanced_result.api_group_name),
+                        user_prompt: enhanced_result.user_prompt, // Add this line
+                        usage: Some(sentence::Usage {
+                            // Add this field
+                            input_tokens: usage_info.input_tokens,
+                            output_tokens: usage_info.output_tokens,
+                            total_tokens: usage_info.total_tokens,
+                            model: usage_info.model,
+                            estimated: usage_info.estimated,
+                        }),
                         parameters: enhanced_result
                             .parameters
                             .into_iter()
@@ -331,34 +350,46 @@ impl SentenceService for SentenceAnalyzeService {
                             } else {
                                 enhanced_result.matching_info.completion_percentage
                             },
-                            missing_required_fields: if let Some(ref prog) = progressive_result {
-                                prog.missing_parameters
-                                    .iter()
-                                    .map(|name| sentence::MissingField {
-                                        name: name.clone(),
-                                        description: format!("Missing parameter: {}", name),
-                                    })
-                                    .collect()
-                            } else {
-                                enhanced_result
-                                    .matching_info
-                                    .missing_required_fields
-                                    .into_iter()
-                                    .map(|field| sentence::MissingField {
-                                        name: field.name,
-                                        description: field.description,
-                                    })
-                                    .collect()
+                            missing_required_fields: {
+                                // Deduplicate missing required fields
+                                let mut unique_missing: Vec<sentence::MissingField> = Vec::new();
+                                let source_fields = if let Some(ref prog) = progressive_result {
+                                    prog.missing_parameters
+                                        .iter()
+                                        .map(|name| {
+                                            (name.clone(), format!("Missing parameter: {}", name))
+                                        })
+                                        .collect::<Vec<_>>()
+                                } else {
+                                    enhanced_result
+                                        .matching_info
+                                        .missing_required_fields
+                                        .into_iter()
+                                        .map(|field| (field.name, field.description))
+                                        .collect()
+                                };
+
+                                for (name, description) in source_fields {
+                                    if !unique_missing.iter().any(|f| f.name == name) {
+                                        unique_missing
+                                            .push(sentence::MissingField { name, description });
+                                    }
+                                }
+                                unique_missing
                             },
-                            missing_optional_fields: enhanced_result
-                                .matching_info
-                                .missing_optional_fields
-                                .into_iter()
-                                .map(|field| sentence::MissingField {
-                                    name: field.name,
-                                    description: field.description,
-                                })
-                                .collect(),
+                            missing_optional_fields: {
+                                // Deduplicate missing optional fields
+                                let mut unique_missing: Vec<sentence::MissingField> = Vec::new();
+                                for field in enhanced_result.matching_info.missing_optional_fields {
+                                    if !unique_missing.iter().any(|f| f.name == field.name) {
+                                        unique_missing.push(sentence::MissingField {
+                                            name: field.name,
+                                            description: field.description,
+                                        });
+                                    }
+                                }
+                                unique_missing
+                            },
                         }),
                     };
 

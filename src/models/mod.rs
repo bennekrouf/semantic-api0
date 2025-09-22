@@ -3,7 +3,6 @@ pub mod providers;
 
 pub use providers::ModelsConfig;
 use serde::{Deserialize, Serialize};
-// use std::collections::HashSet;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MissingField {
@@ -55,6 +54,27 @@ pub struct EnhancedEndpoint {
     pub parameters: Vec<EndpointParameter>,
 }
 
+#[derive(Debug, Serialize, Clone)]
+pub struct UsageInfo {
+    pub input_tokens: u32,
+    pub output_tokens: u32,
+    pub total_tokens: u32,
+    pub model: String,
+    pub estimated: bool,
+}
+
+impl From<&crate::models::providers::token_counter::TokenUsage> for UsageInfo {
+    fn from(usage: &crate::models::providers::token_counter::TokenUsage) -> Self {
+        Self {
+            input_tokens: usage.input_tokens,
+            output_tokens: usage.output_tokens,
+            total_tokens: usage.total_tokens,
+            model: "unknown".to_string(), // Will be set by caller
+            estimated: usage.estimated,
+        }
+    }
+}
+
 #[derive(Debug, Serialize)]
 pub struct EnhancedAnalysisResult {
     pub endpoint_id: String,
@@ -73,6 +93,7 @@ pub struct EnhancedAnalysisResult {
     pub matching_info: MatchingInfo,
     pub total_input_tokens: u32,
     pub total_output_tokens: u32,
+    pub usage: UsageInfo,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -103,6 +124,8 @@ pub struct MatchingInfo {
 
 impl MatchingInfo {
     pub fn compute(parameters: &[ParameterMatch], endpoint_params: &[EndpointParameter]) -> Self {
+        use std::collections::HashSet; // Move import here
+
         let mut total_required = 0;
         let mut mapped_required = 0;
         let mut total_optional = 0;
@@ -111,7 +134,7 @@ impl MatchingInfo {
         let mut missing_optional = Vec::new();
 
         // Use a HashSet to track processed parameter names to avoid duplicates
-        let mut processed_params = std::collections::HashSet::new();
+        let mut processed_params = HashSet::new();
 
         for endpoint_param in endpoint_params {
             // Skip if we've already processed this parameter name

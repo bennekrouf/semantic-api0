@@ -6,6 +6,7 @@ use token_counter::{TokenCounter, TokenUsage};
 
 pub mod claude;
 pub mod cohere;
+pub mod deepseek;
 pub mod token_counter;
 
 #[derive(Debug)]
@@ -37,6 +38,8 @@ pub struct ModelConfig {
     pub cohere: String,
     #[serde(default)]
     pub claude: String,
+    #[serde(default)]
+    pub deepseek: String,
     pub temperature: f32,
     pub max_tokens: u32,
 }
@@ -45,7 +48,7 @@ pub struct ModelConfig {
 pub struct ModelsConfig {
     pub sentence_to_json: ModelConfig,
     pub find_endpoint: ModelConfig,
-    // pub semantic_match: ModelConfig,
+    pub semantic_match: ModelConfig,
     pub intent_classification: ModelConfig,
 }
 
@@ -61,6 +64,7 @@ pub fn create_provider(
         match provider_type {
             "cohere" => Some(Box::new(cohere::CohereProvider::new(config))),
             "claude" => Some(Box::new(claude::ClaudeProvider::new(config))),
+            "deepseek" => Some(Box::new(deepseek::DeepSeekProvider::new(config))),
             _ => None,
         }
     } else {
@@ -83,3 +87,4 @@ impl<T> ProviderWithTokens<T> {
         }
     }
 }
+

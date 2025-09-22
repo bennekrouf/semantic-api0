@@ -1,6 +1,7 @@
 // src/main.rs - Updated with conversation management
 mod analyze_sentence;
 mod cli;
+mod comparison_test;
 mod conversation; // Add this new module
 mod endpoint_client;
 mod general_question_handler;
@@ -12,6 +13,7 @@ mod prompts;
 mod sentence_service;
 mod utils;
 mod workflow;
+
 use crate::models::config::load_models_config;
 use crate::models::providers::{create_provider, ModelProvider, ProviderConfig};
 use std::sync::Arc;
@@ -99,6 +101,22 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
                 std::process::exit(1);
             }
         },
+        "deepseek" => match env::var("DEEPSEEK_API_KEY") {
+            Ok(api_key) => {
+                info!("Using DeepSeek API");
+                let config = ProviderConfig {
+                    enabled: true,
+                    api_key: Some(api_key),
+                };
+                create_provider(&config, "deepseek").expect("Failed to create DeepSeek provider")
+            }
+            Err(_) => {
+                error!(
+                    "DeepSeek API key not found in .env file. Please add DEEPSEEK_API_KEY to .env"
+                );
+                std::process::exit(1);
+            }
+        },
         _ => {
             error!(
                 "Invalid provider: {}. Use 'cohere' or 'claude'",
@@ -129,7 +147,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     };
 
     // Check for CLI commands first, then default to server mode
-    if cli.list_endpoints || cli.prompt.is_some() {
+    if cli.compare || cli.list_endpoints || cli.prompt.is_some() {
         // CLI mode - handle the command and exit
         handle_cli(cli, provider_arc).await?;
     } else {

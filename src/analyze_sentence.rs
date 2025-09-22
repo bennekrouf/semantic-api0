@@ -1,7 +1,9 @@
 use crate::endpoint_client::{check_endpoint_service_health, get_enhanced_endpoints};
 use crate::general_question_handler::handle_general_question;
 use crate::models::providers::ModelProvider;
-use crate::models::{EnhancedAnalysisResult, MatchingInfo, MatchingStatus, ParameterMatch};
+use crate::models::{
+    EnhancedAnalysisResult, MatchingInfo, MatchingStatus, ParameterMatch, UsageInfo,
+};
 use crate::utils::email::validate_email;
 use crate::workflow::classify_intent::{classify_intent, IntentType};
 use crate::workflow::find_closest_endpoint::find_closest_endpoint;
@@ -250,6 +252,8 @@ async fn try_actionable_analysis(
     email: &str,
     conversation_id: Option<String>,
 ) -> Result<EnhancedAnalysisResult, Box<dyn Error + Send + Sync>> {
+    let model = provider.get_model_name().to_string();
+
     // Run the full workflow for actionable requests
     const ENHANCED_WORKFLOW_CONFIG: &str = r#"
 steps:
@@ -339,7 +343,15 @@ steps:
     // Generate user prompt for missing fields
     let user_prompt = matching_info.generate_user_prompt(&enhanced_endpoint.name);
 
-    // Return enhanced result with complete endpoint metadata
+    let total_usage = UsageInfo {
+        input_tokens: context.total_input_tokens,
+        output_tokens: context.total_output_tokens,
+        total_tokens: context.total_input_tokens + context.total_output_tokens,
+        model,
+        estimated: true, // Set to false if all steps had real usage data
+    };
+
+    // Return enhanced result with usage information
     Ok(EnhancedAnalysisResult {
         conversation_id,
         endpoint_id: enhanced_endpoint.id.clone(),
@@ -354,9 +366,10 @@ steps:
         parameters: parameter_matches,
         raw_json: context.json_output.ok_or("JSON output not available")?,
         matching_info,
-        user_prompt, // Add the generated user prompt
+        user_prompt,
         total_input_tokens: context.total_input_tokens,
         total_output_tokens: context.total_output_tokens,
+        usage: total_usage, // Add this field
     })
 }
 
@@ -368,6 +381,7 @@ pub async fn analyze_sentence_enhanced(
     email: &str,
     conversation_id: Option<String>,
 ) -> Result<EnhancedAnalysisResult, Box<dyn Error + Send + Sync>> {
+    let model = provider.get_model_name().to_string();
     if email.is_empty() {
         return Err("Email is required".into());
     }
@@ -432,6 +446,14 @@ pub async fn analyze_sentence_enhanced(
                             missing_optional_fields: vec![],
                         };
 
+                        let usage_info = UsageInfo {
+                            input_tokens: conversational_result.usage.input_tokens,
+                            output_tokens: conversational_result.usage.output_tokens,
+                            total_tokens: conversational_result.usage.total_tokens,
+                            model,
+                            estimated: conversational_result.usage.estimated,
+                        };
+
                         Ok(EnhancedAnalysisResult {
                             endpoint_id: "general_conversation_fallback".to_string(),
                             endpoint_name: "General Conversation (Fallback)".to_string(),
@@ -456,6 +478,7 @@ pub async fn analyze_sentence_enhanced(
                             user_prompt: None, // No missing fields for general conversation
                             total_input_tokens: conversational_result.usage.input_tokens,
                             total_output_tokens: conversational_result.usage.output_tokens,
+                            usage: usage_info,
                         })
                     } else {
                         Err(e)
@@ -468,7 +491,7 @@ pub async fn analyze_sentence_enhanced(
             info!("Processing as general question - generating conversational response");
 
             // Handle general questions with a simple response
-            let conversational_result = handle_general_question(sentence, provider).await?;
+            let conversational_result = handle_general_question(sentence, provider.clone()).await?;
 
             let matching_info = MatchingInfo {
                 status: MatchingStatus::Complete, // General questions are always "complete"
@@ -482,6 +505,14 @@ pub async fn analyze_sentence_enhanced(
             };
 
             // Return a mock EnhancedAnalysisResult for general conversations
+            let usage_info = UsageInfo {
+                input_tokens: conversational_result.usage.input_tokens,
+                output_tokens: conversational_result.usage.output_tokens,
+                total_tokens: conversational_result.usage.total_tokens,
+                model: provider.get_model_name().to_string(),
+                estimated: conversational_result.usage.estimated,
+            };
+
             Ok(EnhancedAnalysisResult {
                 endpoint_id: "general_conversation".to_string(),
                 endpoint_name: "General Conversation".to_string(),
@@ -495,14 +526,15 @@ pub async fn analyze_sentence_enhanced(
                 parameters: vec![],
                 raw_json: serde_json::json!({
                     "type": "general_conversation",
-                    "response": conversational_result.content,  // Use .content
+                    "response": conversational_result.content,
                     "intent": "general_question"
                 }),
                 conversation_id,
                 matching_info,
-                user_prompt: None, // No missing fields for general conversation
-                total_input_tokens: conversational_result.usage.input_tokens, // Track actual tokens
-                total_output_tokens: conversational_result.usage.output_tokens, // Track actual tokens
+                user_prompt: None,
+                total_input_tokens: usage_info.input_tokens,
+                total_output_tokens: usage_info.output_tokens,
+                usage: usage_info, // Add this field
             })
         }
     }
