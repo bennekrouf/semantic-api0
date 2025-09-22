@@ -14,7 +14,7 @@ use crate::workflow::{WorkflowConfig, WorkflowContext, WorkflowEngine, WorkflowS
 use async_trait::async_trait;
 use std::error::Error;
 use std::sync::Arc;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 // Enhanced configuration loading step that extends the existing workflow
 pub struct EnhancedConfigurationLoadingStep {
@@ -111,6 +111,25 @@ impl WorkflowStep for JsonGenerationStep {
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         let json_result = sentence_to_json(&context.sentence, context.provider.clone()).await?;
         context.json_output = Some(json_result);
+
+        // The sentence_to_json function should return usage info, but since it doesn't,
+        // we need to estimate the tokens used in this step
+        let enhanced_calculator = crate::utils::token_calculator::EnhancedTokenCalculator::new();
+        let step_usage = enhanced_calculator.calculate_usage(
+            &context.sentence,
+            "",
+            context.provider.get_model_name(),
+        );
+
+        // Add tokens to context
+        context.total_input_tokens += step_usage.input_tokens;
+        context.total_output_tokens += step_usage.output_tokens;
+
+        debug!(
+            "JSON generation step added {} input tokens, {} output tokens",
+            step_usage.input_tokens, step_usage.output_tokens
+        );
+
         Ok(())
     }
     fn name(&self) -> &'static str {
@@ -134,6 +153,24 @@ impl WorkflowStep for EndpointMatchingStep {
         context.endpoint_id = Some(endpoint_result.id.clone());
         context.endpoint_description = Some(endpoint_result.description.clone());
         context.matched_endpoint = Some(endpoint_result);
+
+        // Estimate tokens for endpoint matching step
+        let enhanced_calculator = crate::utils::token_calculator::EnhancedTokenCalculator::new();
+        let step_usage = enhanced_calculator.calculate_usage(
+            &context.sentence,
+            "",
+            context.provider.get_model_name(),
+        );
+
+        // Add tokens to context
+        context.total_input_tokens += step_usage.input_tokens;
+        context.total_output_tokens += step_usage.output_tokens;
+
+        debug!(
+            "Endpoint matching step added {} input tokens, {} output tokens",
+            step_usage.input_tokens, step_usage.output_tokens
+        );
+
         Ok(())
     }
     fn name(&self) -> &'static str {
@@ -179,6 +216,24 @@ impl WorkflowStep for FieldMatchingStep {
             .collect();
 
         context.parameters = parameters;
+
+        // Estimate tokens for field matching step
+        let enhanced_calculator = crate::utils::token_calculator::EnhancedTokenCalculator::new();
+        let step_usage = enhanced_calculator.calculate_usage(
+            &context.sentence,
+            "",
+            context.provider.get_model_name(),
+        );
+
+        // Add tokens to context
+        context.total_input_tokens += step_usage.input_tokens;
+        context.total_output_tokens += step_usage.output_tokens;
+
+        debug!(
+            "Field matching step added {} input tokens, {} output tokens",
+            step_usage.input_tokens, step_usage.output_tokens
+        );
+
         Ok(())
     }
     fn name(&self) -> &'static str {
@@ -314,7 +369,9 @@ steps:
     }
 
     // Execute the workflow
-    let context = engine.execute(sentence.to_string(), provider).await?;
+    let context = engine
+        .execute(sentence.to_string(), provider.clone())
+        .await?;
 
     // Extract enhanced endpoint data from context
     let enhanced_endpoint = context
@@ -339,19 +396,83 @@ steps:
         .collect();
 
     let matching_info = MatchingInfo::compute(&parameter_matches, &enhanced_endpoint.parameters);
-
-    // Generate user prompt for missing fields
     let user_prompt = matching_info.generate_user_prompt(&enhanced_endpoint.name);
 
-    let total_usage = UsageInfo {
-        input_tokens: context.total_input_tokens,
-        output_tokens: context.total_output_tokens,
-        total_tokens: context.total_input_tokens + context.total_output_tokens,
-        model,
-        estimated: true, // Set to false if all steps had real usage data
+    // If workflow didn't track tokens properly, estimate them based on the sentence and response
+     let (final_input_tokens, final_output_tokens) = if context.total_output_tokens == 0 {
+        debug!("Workflow reported 0 output tokens, estimating output tokens");
+
+        let enhanced_calculator = crate::utils::token_calculator::EnhancedTokenCalculator::new();
+
+        // Use existing input tokens if available, otherwise estimate
+        let estimated_input = if context.total_input_tokens > 0 {
+            context.total_input_tokens
+        } else {
+            let sentence_tokens = enhanced_calculator.estimate_tokens_enhanced(sentence, provider.get_model_name(), None);
+            sentence_tokens * 3 // Used in ~3 different LLM calls
+        };
+
+        // Estimate output tokens based on all the content generated by the workflow
+        let mut total_output_content = String::new();
+
+        // Add JSON output content
+        if let Some(json_output) = &context.json_output {
+            let json_str = serde_json::to_string(json_output).unwrap_or_default();
+            total_output_content.push_str(&json_str);
+            total_output_content.push_str(" ");
+        }
+
+        // Add endpoint matching result (endpoint ID and description)
+        if let Some(endpoint_id) = &context.endpoint_id {
+            total_output_content.push_str(endpoint_id);
+            total_output_content.push_str(" ");
+        }
+        if let Some(desc) = &context.endpoint_description {
+            total_output_content.push_str(desc);
+            total_output_content.push_str(" ");
+        }
+        
+        // Add parameter processing results
+        for param in &parameter_matches {
+            total_output_content.push_str(&param.name);
+            total_output_content.push_str(" ");
+            if let Some(value) = &param.value {
+                total_output_content.push_str(value);
+                total_output_content.push_str(" ");
+            }
+        }
+        
+        // Add estimated tokens for LLM reasoning/processing overhead
+        let sentence_tokens = enhanced_calculator.estimate_tokens_enhanced(sentence, provider.get_model_name(), None);
+        let reasoning_overhead = sentence_tokens * 2; // Assume 2x input tokens for reasoning
+        
+        let content_tokens = enhanced_calculator.estimate_tokens_enhanced(&total_output_content, provider.get_model_name(), None);
+        let estimated_output = content_tokens + reasoning_overhead;
+        
+        debug!("Output estimation breakdown: content='{}' ({} tokens), reasoning overhead ({} tokens), total output: {}", 
+               total_output_content.chars().take(100).collect::<String>(), 
+               content_tokens, reasoning_overhead, estimated_output);
+               
+        (estimated_input, estimated_output)
+    } else {
+        (context.total_input_tokens, context.total_output_tokens)
     };
 
-    // Return enhanced result with usage information
+    // Create usage info from final token counts
+    let usage_info = UsageInfo {
+        input_tokens: final_input_tokens,
+        output_tokens: final_output_tokens,
+        total_tokens: final_input_tokens + final_output_tokens,
+        model: provider.get_model_name().to_string(),
+        estimated: true, // Workflow aggregates multiple calls, so mark as estimated
+    };
+
+    debug!(
+        "Final workflow token usage: input={}, output={}, total={}",
+        usage_info.input_tokens, usage_info.output_tokens, usage_info.total_tokens
+    );
+
+    // Return enhanced result with complete endpoint metadata
     Ok(EnhancedAnalysisResult {
         conversation_id,
         endpoint_id: enhanced_endpoint.id.clone(),
@@ -367,9 +488,9 @@ steps:
         raw_json: context.json_output.ok_or("JSON output not available")?,
         matching_info,
         user_prompt,
-        total_input_tokens: context.total_input_tokens,
-        total_output_tokens: context.total_output_tokens,
-        usage: total_usage, // Add this field
+        total_input_tokens: final_input_tokens,
+        total_output_tokens: final_output_tokens,
+        usage: usage_info,
     })
 }
 
@@ -539,4 +660,3 @@ pub async fn analyze_sentence_enhanced(
         }
     }
 }
-
