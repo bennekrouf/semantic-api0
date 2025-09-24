@@ -3,7 +3,7 @@ use clap::Parser;
 use std::{error::Error, sync::Arc};
 use tracing::{error, info};
 
-use crate::comparison_test::{run_model_comparison, EnhancedTestConfig};
+use crate::comparison_test::run_model_comparison;
 use crate::endpoint_client::get_default_api_url;
 use crate::utils::email::validate_email;
 use crate::workflow::classify_intent::IntentType;
@@ -137,24 +137,10 @@ pub async fn handle_cli(
     }
 
     if cli.compare_intents {
-        // let config = EnhancedTestConfig {
-        //     iterations: cli.iterations,
-        //     email: "test@example.com".to_string(),
-        //     api_url: cli
-        //         .api
-        //         .clone()
-        //         .unwrap_or_else(|| "http://localhost:50057".to_string()),
-        //     ..Default::default()
-        // };
-        // let config = crate::comparison_test::EnhancedTestConfig::default();
-        // let tester = EnhancedModelComparisonTester::new(config);
-        // tester.run_enhanced_comparison().await?;
         run_model_comparison().await?;
 
         return Ok(());
     }
-
-    // ... rest of existing handle_cli logic remains the same ...
 
     // Handle list endpoints command
     if cli.list_endpoints {

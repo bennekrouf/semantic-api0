@@ -1,3 +1,5 @@
+// src/workflow/actions/match_fields.rs - Generic industry-agnostic implementation
+
 use crate::json_helper::sanitize_json;
 use crate::models::config::load_models_config;
 use crate::models::Endpoint;
@@ -14,96 +16,312 @@ pub async fn match_fields_semantic(
     endpoint: &Endpoint,
     provider: Arc<dyn ModelProvider>,
 ) -> Result<Vec<(String, String, Option<String>)>, Box<dyn Error + Send + Sync>> {
-    let input_fields = input_json
-        .get("endpoints")
-        .ok_or("Invalid JSON structure")?
-        .as_array()
-        .and_then(|arr| arr.first())
-        .ok_or("No endpoints found in JSON")?
-        .get("fields")
-        .ok_or("No fields found in JSON")?
-        .as_object()
-        .ok_or("Fields is not an object")?
-        .iter()
-        .map(|(k, v)| format!("{}: {}", k, v))
-        .collect::<Vec<_>>()
-        .join(", ");
+    debug!("Starting generic semantic field matching");
+    debug!("Input JSON: {}", serde_json::to_string_pretty(input_json)?);
+    debug!(
+        "Endpoint: {} with {} parameters",
+        endpoint.id,
+        endpoint.parameters.len()
+    );
 
-    let parameters = endpoint
-        .parameters
-        .iter()
-        .map(|p| format!("{}: {}", p.name, p.description,))
-        .collect::<Vec<_>>()
-        .join("\n");
+    // Extract the fields from the LLM's JSON response
+    let extracted_fields = extract_fields_from_json(input_json)?;
+    if extracted_fields.is_empty() {
+        debug!("No fields extracted from input JSON");
+        return create_empty_matches(&endpoint.parameters);
+    }
 
-    // Initialize PromptManager and get the match_fields template
-    let prompt_manager = PromptManager::new().await?;
-    let template = prompt_manager
-        .get_prompt("match_fields", Some("v1"))
-        .ok_or("Match fields prompt template not found")?;
+    debug!(
+        "Extracted fields: {:?}",
+        extracted_fields.keys().collect::<Vec<_>>()
+    );
 
-    // Replace placeholders in the template
-    let prompt = template
-        .replace("{input_fields}", &input_fields)
-        .replace("{parameters}", &parameters);
+    // Try direct matching first (fast path)
+    let direct_matches = try_direct_matching(&endpoint.parameters, &extracted_fields);
 
-    debug!("Field matching prompt:\n{}", prompt);
-    debug!("Calling Cohere for field matching");
+    // Count how many required parameters still need matching
+    let unmatched_required = count_unmatched_required_params(&endpoint.parameters, &direct_matches);
 
-    // Load model configuration
-    let models_config = load_models_config().await?;
-    let model_config = &models_config.sentence_to_json;
+    if unmatched_required == 0 {
+        debug!("All required parameters matched directly, skipping semantic matching");
+        return Ok(direct_matches);
+    }
 
-    let result = provider.generate(&prompt, model_config).await?;
+    debug!(
+        "Found {} unmatched required parameters, attempting semantic matching",
+        unmatched_required
+    );
 
-    let json_response = sanitize_json(&result.content)?;
+    // Use LLM for semantic matching
+    let semantic_matches = try_semantic_matching(
+        &endpoint.parameters,
+        &extracted_fields,
+        &direct_matches,
+        provider,
+    )
+    .await?;
 
-    debug!("Semantic matching response: {:?}", json_response);
+    Ok(semantic_matches)
+}
 
-    let mut matched_fields = Vec::new();
-    let input_fields = input_json["endpoints"][0]["fields"]
-        .as_object()
-        .ok_or("Invalid JSON structure")?;
+fn extract_fields_from_json(
+    input_json: &Value,
+) -> Result<serde_json::Map<String, Value>, Box<dyn Error + Send + Sync>> {
+    if let Some(endpoints_array) = input_json.get("endpoints").and_then(|e| e.as_array()) {
+        if let Some(first_endpoint) = endpoints_array.first() {
+            if let Some(fields) = first_endpoint.get("fields").and_then(|f| f.as_object()) {
+                return Ok(fields.clone());
+            }
+        }
+    }
 
-    for param in &endpoint.parameters {
-        let mut value: Option<String> = None;
+    // Fallback: try to use the JSON directly if it's an object
+    if let Some(obj) = input_json.as_object() {
+        if !obj.contains_key("endpoints") {
+            return Ok(obj.clone());
+        }
+    }
 
-        // First try exact match from input fields
-        if let Some(v) = input_fields.get(&param.name) {
-            value = match v {
-                Value::String(s) => Some(s.clone()),
-                _ => Some(v.to_string().trim_matches('"').to_string()),
-            };
+    Ok(serde_json::Map::new())
+}
+
+fn try_direct_matching(
+    endpoint_params: &[crate::models::EndpointParameter],
+    extracted_fields: &serde_json::Map<String, Value>,
+) -> Vec<(String, String, Option<String>)> {
+    let mut matches = Vec::new();
+
+    for param in endpoint_params {
+        let mut matched_value: Option<String> = None;
+
+        // Try exact parameter name match
+        if let Some(value) = extracted_fields.get(&param.name) {
+            matched_value = extract_string_value(value);
+            debug!("Direct match for '{}': {:?}", param.name, matched_value);
         }
 
-        // If no exact match, try alternatives from input fields
-        if value.is_none() {
+        // Try alternatives if provided and no direct match
+        if matched_value.is_none() {
             if let Some(alternatives) = &param.alternatives {
                 for alt in alternatives {
-                    if let Some(v) = input_fields.get(alt) {
-                        value = match v {
-                            Value::String(s) => Some(s.clone()),
-                            _ => Some(v.to_string().trim_matches('"').to_string()),
-                        };
+                    if let Some(value) = extracted_fields.get(alt) {
+                        matched_value = extract_string_value(value);
+                        debug!(
+                            "Alternative match '{}' -> '{}': {:?}",
+                            alt, param.name, matched_value
+                        );
                         break;
                     }
                 }
             }
         }
 
-        // If still no match, check semantic matching result from LLM
-        if value.is_none() {
-            if let Some(v) = json_response.get(&param.name) {
-                value = match v {
-                    Value::String(s) => Some(s.clone()),
-                    Value::Null => None,
-                    _ => Some(v.to_string()),
-                };
+        matches.push((param.name.clone(), param.description.clone(), matched_value));
+    }
+
+    matches
+}
+
+fn count_unmatched_required_params(
+    endpoint_params: &[crate::models::EndpointParameter],
+    matches: &[(String, String, Option<String>)],
+) -> usize {
+    endpoint_params
+        .iter()
+        .filter(|param| param.required.unwrap_or(false))
+        .filter(|param| {
+            !matches.iter().any(|(name, _, value)| {
+                name == &param.name
+                    && value
+                        .as_ref()
+                        .map(|v| !v.trim().is_empty())
+                        .unwrap_or(false)
+            })
+        })
+        .count()
+}
+
+async fn try_semantic_matching(
+    endpoint_params: &[crate::models::EndpointParameter],
+    extracted_fields: &serde_json::Map<String, Value>,
+    direct_matches: &[(String, String, Option<String>)],
+    provider: Arc<dyn ModelProvider>,
+) -> Result<Vec<(String, String, Option<String>)>, Box<dyn Error + Send + Sync>> {
+    // Prepare input for LLM
+    let input_fields_str = serde_json::to_string_pretty(extracted_fields)?;
+
+    let parameters_str = endpoint_params
+        .iter()
+        .map(|p| {
+            let required_str = if p.required.unwrap_or(false) {
+                " (REQUIRED)"
+            } else {
+                " (optional)"
+            };
+            let alternatives_str = if let Some(alts) = &p.alternatives {
+                if !alts.is_empty() {
+                    format!(" [alternatives: {}]", alts.join(", "))
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            };
+            format!(
+                "- {}{}: {}{}",
+                p.name, required_str, p.description, alternatives_str
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let prompt_manager = PromptManager::new().await?;
+    let prompt = prompt_manager
+        .get_prompt("match_fields", Some("v3"))
+        .ok_or("match_fields v3 prompt not found")?
+        .replace("{input_fields}", &input_fields_str)
+        .replace("{parameters}", &parameters_str);
+
+    debug!(
+        "Semantic matching prompt generated, length: {} chars",
+        prompt.len()
+    );
+
+    let models_config = load_models_config().await?;
+    let model_config = &models_config.semantic_match;
+
+    let result = provider.generate(&prompt, model_config).await?;
+    debug!("Semantic matching raw response: {}", result.content);
+
+    // Parse the LLM response
+    let semantic_json = sanitize_json(&result.content)?;
+    debug!("Parsed semantic matching JSON: {:?}", semantic_json);
+
+    // Combine direct matches with semantic matches
+    let mut final_matches = Vec::new();
+
+    for param in endpoint_params {
+        let mut final_value: Option<String> = None;
+
+        // First, check if we had a direct match
+        if let Some((_, _, direct_value)) = direct_matches
+            .iter()
+            .find(|(name, _, _)| name == &param.name)
+        {
+            if direct_value
+                .as_ref()
+                .map(|v| !v.trim().is_empty())
+                .unwrap_or(false)
+            {
+                final_value = direct_value.clone();
+                debug!("Using direct match for '{}': {:?}", param.name, final_value);
             }
         }
 
-        matched_fields.push((param.name.clone(), param.description.clone(), value));
+        // If no direct match, try semantic match
+        if final_value.is_none() {
+            if let Some(semantic_value) = semantic_json.get(&param.name) {
+                final_value = extract_string_value(semantic_value);
+                debug!(
+                    "Using semantic match for '{}': {:?}",
+                    param.name, final_value
+                );
+            }
+        }
+
+        final_matches.push((param.name.clone(), param.description.clone(), final_value));
     }
 
-    Ok(matched_fields)
+    debug!(
+        "Final semantic matches: {:?}",
+        final_matches
+            .iter()
+            .map(|(n, _, v)| (n, v))
+            .collect::<Vec<_>>()
+    );
+    Ok(final_matches)
 }
+
+fn create_empty_matches(
+    endpoint_params: &[crate::models::EndpointParameter],
+) -> Result<Vec<(String, String, Option<String>)>, Box<dyn Error + Send + Sync>> {
+    Ok(endpoint_params
+        .iter()
+        .map(|param| (param.name.clone(), param.description.clone(), None))
+        .collect())
+}
+
+fn extract_string_value(value: &Value) -> Option<String> {
+    match value {
+        Value::String(s) if !s.trim().is_empty() => Some(s.clone()),
+        Value::Null => None,
+        Value::Object(_) | Value::Array(_) => {
+            // For complex objects, serialize them as JSON strings
+            Some(serde_json::to_string(value).unwrap_or_default())
+        }
+        _ => {
+            let string_val = value.to_string().trim_matches('"').to_string();
+            if string_val.trim().is_empty() || string_val == "null" {
+                None
+            } else {
+                Some(string_val)
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_string_value() {
+        assert_eq!(
+            extract_string_value(&Value::String("test".to_string())),
+            Some("test".to_string())
+        );
+        assert_eq!(extract_string_value(&Value::String("".to_string())), None);
+        assert_eq!(
+            extract_string_value(&Value::String("   ".to_string())),
+            None
+        );
+        assert_eq!(extract_string_value(&Value::Null), None);
+
+        let obj = serde_json::json!({"name": "John"});
+        let result = extract_string_value(&obj);
+        assert!(result.is_some());
+        assert!(result.unwrap().contains("John"));
+    }
+
+    #[test]
+    fn test_count_unmatched_required_params() {
+        let params = vec![
+            crate::models::EndpointParameter {
+                name: "required1".to_string(),
+                description: "".to_string(),
+                required: Some(true),
+                alternatives: None,
+                semantic_value: None,
+            },
+            crate::models::EndpointParameter {
+                name: "optional1".to_string(),
+                description: "".to_string(),
+                required: Some(false),
+                alternatives: None,
+                semantic_value: None,
+            },
+        ];
+
+        let matches = vec![
+            (
+                "required1".to_string(),
+                "".to_string(),
+                Some("value".to_string()),
+            ),
+            ("optional1".to_string(), "".to_string(), None),
+        ];
+
+        assert_eq!(count_unmatched_required_params(&params, &matches), 0);
+    }
+}
+

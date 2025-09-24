@@ -127,78 +127,113 @@ pub struct MatchingInfo {
 
 impl MatchingInfo {
     pub fn compute(parameters: &[ParameterMatch], endpoint_params: &[EndpointParameter]) -> Self {
-        use std::collections::HashSet; // Move import here
+        use tracing::debug;
 
-        let mut total_required = 0;
-        let mut mapped_required = 0;
-        let mut total_optional = 0;
-        let mut mapped_optional = 0;
-        let mut missing_required = Vec::new();
-        let mut missing_optional = Vec::new();
+        debug!("=== MatchingInfo Debug ===");
+        debug!("Input parameters: {:#?}", parameters);
+        debug!("Endpoint parameters: {:#?}", endpoint_params);
 
-        // Use a HashSet to track processed parameter names to avoid duplicates
-        let mut processed_params = HashSet::new();
-
-        for endpoint_param in endpoint_params {
-            // Skip if we've already processed this parameter name
-            if processed_params.contains(&endpoint_param.name) {
-                continue;
-            }
-            processed_params.insert(endpoint_param.name.clone());
-
-            let is_required = endpoint_param.required.unwrap_or(false);
-            let is_mapped = parameters.iter().any(|p| {
-                p.name == endpoint_param.name
-                    && p.value.is_some()
-                    && !p.value.as_ref().unwrap().trim().is_empty()
-            }); // Add empty check
-
-            if is_required {
-                total_required += 1;
-                if is_mapped {
-                    mapped_required += 1;
-                } else {
-                    missing_required.push(MissingField {
-                        name: endpoint_param.name.clone(),
-                        description: endpoint_param.description.clone(),
-                    });
-                }
-            } else {
-                total_optional += 1;
-                if is_mapped {
-                    mapped_optional += 1;
-                } else {
-                    missing_optional.push(MissingField {
-                        name: endpoint_param.name.clone(),
-                        description: endpoint_param.description.clone(),
-                    });
-                }
-            }
+        // Helper function to check if a parameter has a valid value
+        fn has_valid_value(param: &ParameterMatch) -> bool {
+            param
+                .value
+                .as_ref()
+                .map(|v| !v.trim().is_empty())
+                .unwrap_or(false)
         }
 
-        let completion_percentage = if total_required > 0 {
-            (mapped_required as f32 / total_required as f32) * 100.0
+        // Helper function to find matching parameter by name
+        fn find_matched_param<'a>(
+            param_name: &str,
+            parameters: &'a [ParameterMatch],
+        ) -> Option<&'a ParameterMatch> {
+            parameters.iter().find(|p| p.name == param_name)
+        }
+
+        // Separate endpoint parameters by requirement status
+        let (required_params, optional_params): (Vec<_>, Vec<_>) = endpoint_params
+            .iter()
+            .partition(|ep| ep.required.unwrap_or(false));
+
+        // Process required parameters
+        let (mapped_required, missing_required): (Vec<_>, Vec<_>) = required_params
+            .iter()
+            .map(|ep| {
+                let matched_param = find_matched_param(&ep.name, parameters);
+                let is_mapped = matched_param.map(has_valid_value).unwrap_or(false);
+
+                if is_mapped {
+                    (Some(ep), None)
+                } else {
+                    (
+                        None,
+                        Some(MissingField {
+                            name: ep.name.clone(),
+                            description: ep.description.clone(),
+                        }),
+                    )
+                }
+            })
+            .unzip();
+
+        // Process optional parameters
+        let (mapped_optional, missing_optional): (Vec<_>, Vec<_>) = optional_params
+            .iter()
+            .map(|ep| {
+                let matched_param = find_matched_param(&ep.name, parameters);
+                let is_mapped = matched_param.map(has_valid_value).unwrap_or(false);
+
+                if is_mapped {
+                    (Some(ep), None)
+                } else {
+                    (
+                        None,
+                        Some(MissingField {
+                            name: ep.name.clone(),
+                            description: ep.description.clone(),
+                        }),
+                    )
+                }
+            })
+            .unzip();
+
+        // Extract counts and lists
+        let total_required_fields = required_params.len();
+        let mapped_required_fields = mapped_required.into_iter().flatten().count();
+        let missing_required_fields: Vec<MissingField> =
+            missing_required.into_iter().flatten().collect();
+
+        let total_optional_fields = optional_params.len();
+        let mapped_optional_fields = mapped_optional.into_iter().flatten().count();
+        let missing_optional_fields: Vec<MissingField> =
+            missing_optional.into_iter().flatten().collect();
+
+        // Calculate completion percentage
+        let completion_percentage = if total_required_fields > 0 {
+            (mapped_required_fields as f32 / total_required_fields as f32) * 100.0
         } else {
             100.0 // No required fields means 100% complete
         };
 
-        let status = if total_required == 0 || mapped_required == total_required {
-            MatchingStatus::Complete
-        } else if mapped_required > 0 {
-            MatchingStatus::Partial
-        } else {
-            MatchingStatus::Incomplete
-        };
+        // Determine status
+        let status =
+            if total_required_fields == 0 || mapped_required_fields == total_required_fields {
+                MatchingStatus::Complete
+            } else if mapped_required_fields > 0 {
+                MatchingStatus::Partial
+            } else {
+                MatchingStatus::Incomplete
+            };
 
         Self {
             status,
-            total_required_fields: total_required,
-            mapped_required_fields: mapped_required,
-            total_optional_fields: total_optional,
-            mapped_optional_fields: mapped_optional,
+            total_required_fields,
+            mapped_required_fields,
+            total_optional_fields,
+            mapped_optional_fields,
             completion_percentage,
-            missing_required_fields: missing_required,
-            missing_optional_fields: missing_optional,
+            missing_required_fields,
+            missing_optional_fields,
         }
     }
 

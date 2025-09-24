@@ -1,5 +1,5 @@
 output: "grpc"
-level: "info"
+level: "debug"
 server_id: "semantic-service"
 client_id: "semantic-service"
 grpc:

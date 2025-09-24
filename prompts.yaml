@@ -31,19 +31,74 @@ prompts:
     versions:
       v1:
         template: |
-          Given these input fields from a sentence: '{input_fields}'\n\
-          And these endpoint parameters:\n{parameters}\n\n\
-          For each endpoint parameter:\n\
-          1. Look at the input fields\n\
-          2. Find any field that matches the parameter or its alternatives\n\
-          3. Extract the actual value from the matching input field\n\n\
-          Return a JSON where:\n\
-          - Keys are the endpoint parameter names\n\
-          - Values are the actual values found in the input fields\n\
-          Only include parameters where you found a matching value.\n\
+          Given these input fields from a sentence: '{input_fields}'
+          And these endpoint parameters:
+          {parameters}
+
+          For each endpoint parameter:
+          1. Look at the input fields
+          2. Find any field that matches the parameter or its alternatives
+          3. Extract the actual value from the matching input field
+
+          Return a JSON where:
+          - Keys are the endpoint parameter names
+          - Values are the actual values found in the input fields
+          Only include parameters where you found a matching value.
           Return valid JSON only, no additional text.
-    default_version: "v1"
-    
+      v2:
+        template: |
+          Map extracted fields to endpoint parameters using semantic understanding.
+          
+          Extracted fields: {input_fields}
+          
+          Target endpoint parameters:
+          {parameters}
+          
+          Rules:
+          1. Match fields to parameters based on semantic meaning, not just exact names
+          2. Consider parameter alternatives and descriptions
+          3. Transform values if needed to match expected format
+          4. Only include parameters where you found a semantic match
+          
+          Return JSON mapping parameter names to their values:
+          {{"parameter_name": "extracted_value"}}
+      v3:
+        template: |
+          Perform semantic field mapping between extracted data and endpoint parameters.
+
+          EXTRACTED DATA:
+          {input_fields}
+
+          ENDPOINT PARAMETERS:
+          {parameters}
+
+          MAPPING INSTRUCTIONS:
+          1. Analyze each endpoint parameter and its description
+          2. Look for semantically equivalent fields in the extracted data
+          3. Consider common variations and synonyms
+          4. Handle data format transformations when needed
+          5. Use parameter alternatives if provided
+
+          SEMANTIC MATCHING EXAMPLES:
+          - "name" field → "person" parameter (if person expects name data)
+          - "email_address" field → "to" parameter (if to expects email)
+          - "subject_line" field → "subject" parameter
+          - "message_content" field → "body" parameter
+          - "recipient" field → "to" parameter
+
+          FORMAT TRANSFORMATIONS:
+          - If parameter expects JSON object but field has simple value, wrap appropriately
+          - If parameter expects string but field has object, extract relevant string
+          - Preserve original format when direct match is appropriate
+
+          OUTPUT FORMAT:
+          Return only valid JSON mapping parameter names to extracted values:
+          {{"parameter_name": "transformed_value"}}
+
+          Include only parameters where semantic mapping was successful.
+          Do not include parameters with no semantic equivalent in the extracted data.
+    default_version: "v3"
+
   sentence_to_json:
     versions:
       v1:
