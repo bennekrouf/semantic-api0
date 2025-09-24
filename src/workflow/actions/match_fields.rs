@@ -177,7 +177,7 @@ async fn try_semantic_matching(
 
     let prompt_manager = PromptManager::new().await?;
     let prompt = prompt_manager
-        .get_prompt("match_fields", Some("v3"))
+        .get_prompt("match_fields", Some("v1"))
         .ok_or("match_fields v3 prompt not found")?
         .replace("{input_fields}", &input_fields_str)
         .replace("{parameters}", &parameters_str);
@@ -324,4 +324,3 @@ mod tests {
         assert_eq!(count_unmatched_required_params(&params, &matches), 0);
     }
 }
-

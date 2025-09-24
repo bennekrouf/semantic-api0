@@ -32,20 +32,20 @@ impl PromptManager {
         Ok(Self { config })
     }
 
-    pub fn format_help_response(
-        &self,
-        sentence: &str,
-        endpoints_list: &str,
-        version: Option<&str>,
-    ) -> String {
-        let template = self
-            .get_prompt("help_response", version)
-            .unwrap_or_default();
-
-        template
-            .replace("{sentence}", sentence)
-            .replace("{endpoints_list}", endpoints_list)
-    }
+    // pub fn format_help_response(
+    //     &self,
+    //     sentence: &str,
+    //     endpoints_list: &str,
+    //     version: Option<&str>,
+    // ) -> String {
+    //     let template = self
+    //         .get_prompt("help_response", version)
+    //         .unwrap_or_default();
+    //
+    //     template
+    //         .replace("{sentence}", sentence)
+    //         .replace("{endpoints_list}", endpoints_list)
+    // }
 
     pub fn format_help_response_with_language(
         &self,

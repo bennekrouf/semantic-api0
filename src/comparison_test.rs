@@ -153,9 +153,9 @@ impl Default for TestConfig {
                 "claude".to_string(),
                 "deepseek".to_string(),
             ],
-            prompt_versions: vec!["v1".to_string(), "v2".to_string()],
+            prompt_versions: vec!["v1".to_string(), "v2".to_string(), "v3".to_string()],
             iterations: 20,
-            sentence: "Génère un cv pour anthony en fr".to_string(),
+            sentence: "the person is anthony. Is he a good match for the job url https://www.linkedin.com/jobs/view/4297651963/?alternateChannel=search&MMT7jj1mjY9ClS8g".to_string(),
             conversation_id: "e0079e96-6c03-4a98-ab75-98acf2ebc470".to_string(),
             email: "bennekrouf.mohamed@gmail.com".to_string(),
             api_url: "http://localhost:4002".to_string(),
@@ -720,4 +720,3 @@ pub async fn run_custom_comparison(
     let tester = ModelComparisonTester::new(config);
     tester.run_comparison().await
 }
-

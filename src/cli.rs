@@ -125,7 +125,7 @@ pub async fn handle_cli(
     if cli.compare {
         let config = crate::comparison_test::TestConfig {
             iterations: cli.iterations,
-            sentence: "tu peux me générer un cv pour anthony en fr avec le template keyteo"
+            sentence: "the person is anthony. Is he a good match for the job url https://www.linkedin.com/jobs/view/4297651963/?alternateChannel=search&eBP"
                 .to_string(),
             conversation_id: "e0079e96-6c03-4a98-ab75-98acf2ebc470".to_string(),
             email: "bennekrouf.mohamed@gmail.com".to_string(),
