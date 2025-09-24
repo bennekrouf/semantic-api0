@@ -317,37 +317,25 @@ impl SentenceService for SentenceAnalyzeService {
                             }
                         },
                         matching_info: Some(sentence::MatchingInfo {
-                            // ... rest of matching_info stays the same
-                            status: if let Some(ref prog) = progressive_result {
-                                if prog.ready_for_execution {
+                            status: match enhanced_result.matching_info.status {
+                                crate::models::MatchingStatus::Complete => {
                                     sentence::MatchingStatus::Complete as i32
-                                } else if prog.completion_percentage > 0.0 {
-                                    sentence::MatchingStatus::Partial as i32
-                                } else {
-                                    sentence::MatchingStatus::Incomplete as i32
                                 }
-                            } else {
-                                match enhanced_result.matching_info.status {
-                                    crate::models::MatchingStatus::Complete => {
-                                        sentence::MatchingStatus::Complete as i32
-                                    }
-                                    crate::models::MatchingStatus::Partial => {
-                                        sentence::MatchingStatus::Partial as i32
-                                    }
-                                    crate::models::MatchingStatus::Incomplete => {
-                                        sentence::MatchingStatus::Incomplete as i32
-                                    }
+                                crate::models::MatchingStatus::Partial => {
+                                    sentence::MatchingStatus::Partial as i32
+                                }
+                                crate::models::MatchingStatus::Incomplete => {
+                                    sentence::MatchingStatus::Incomplete as i32
                                 }
                             },
                             total_required_fields: enhanced_result
                                 .matching_info
                                 .total_required_fields
                                 as i32,
-                            mapped_required_fields: if let Some(ref prog) = progressive_result {
-                                prog.matched_parameters.len() as i32
-                            } else {
-                                enhanced_result.matching_info.mapped_required_fields as i32
-                            },
+                            mapped_required_fields: enhanced_result
+                                .matching_info
+                                .mapped_required_fields
+                                as i32,
                             total_optional_fields: enhanced_result
                                 .matching_info
                                 .total_optional_fields
@@ -356,52 +344,82 @@ impl SentenceService for SentenceAnalyzeService {
                                 .matching_info
                                 .mapped_optional_fields
                                 as i32,
-                            completion_percentage: if let Some(ref prog) = progressive_result {
-                                prog.completion_percentage
-                            } else {
-                                enhanced_result.matching_info.completion_percentage
-                            },
-                            missing_required_fields: {
-                                // ... existing missing fields logic
-                                let mut unique_missing: Vec<sentence::MissingField> = Vec::new();
-                                let source_fields = if let Some(ref prog) = progressive_result {
-                                    prog.missing_parameters
-                                        .iter()
-                                        .map(|name| {
-                                            (name.clone(), format!("Missing parameter: {}", name))
-                                        })
-                                        .collect::<Vec<_>>()
-                                } else {
-                                    enhanced_result
-                                        .matching_info
-                                        .missing_required_fields
-                                        .into_iter()
-                                        .map(|field| (field.name, field.description))
-                                        .collect()
-                                };
+                            completion_percentage: enhanced_result
+                                .matching_info
+                                .completion_percentage,
 
-                                for (name, description) in source_fields {
-                                    if !unique_missing.iter().any(|f| f.name == name) {
-                                        unique_missing
-                                            .push(sentence::MissingField { name, description });
-                                    }
-                                }
-                                unique_missing
-                            },
-                            missing_optional_fields: {
+                            // Clone and deduplicate missing required fields
+                            missing_required_fields: {
                                 let mut unique_missing: Vec<sentence::MissingField> = Vec::new();
-                                for field in enhanced_result.matching_info.missing_optional_fields {
-                                    if !unique_missing.iter().any(|f| f.name == field.name) {
+                                let mut seen_names = std::collections::HashSet::new();
+
+                                // Clone the missing required fields to avoid borrowing issues
+                                for field in enhanced_result
+                                    .matching_info
+                                    .missing_required_fields
+                                    .clone()
+                                {
+                                    if seen_names.insert(field.name.clone()) {
                                         unique_missing.push(sentence::MissingField {
                                             name: field.name,
                                             description: field.description,
                                         });
+                                    } else {
+                                        tracing::warn!(
+                                            "Duplicate missing required field filtered: {}",
+                                            field.name
+                                        );
+                                    }
+                                }
+                                unique_missing
+                            },
+
+                            // Clone and deduplicate missing optional fields
+                            missing_optional_fields: {
+                                let mut unique_missing: Vec<sentence::MissingField> = Vec::new();
+                                let mut seen_names = std::collections::HashSet::new();
+
+                                // Clone the missing optional fields to avoid borrowing issues
+                                for field in enhanced_result
+                                    .matching_info
+                                    .missing_optional_fields
+                                    .clone()
+                                {
+                                    if seen_names.insert(field.name.clone()) {
+                                        unique_missing.push(sentence::MissingField {
+                                            name: field.name,
+                                            description: field.description,
+                                        });
+                                    } else {
+                                        tracing::warn!(
+                                            "Duplicate missing optional field filtered: {}",
+                                            field.name
+                                        );
                                     }
                                 }
                                 unique_missing
                             },
                         }),
                     };
+
+                    tracing::debug!(
+                        "Final response missing_required: {:?}",
+                        enhanced_result
+                            .matching_info
+                            .missing_required_fields
+                            .iter()
+                            .map(|f| &f.name)
+                            .collect::<Vec<_>>()
+                    );
+                    tracing::debug!(
+                        "Final response missing_optional: {:?}",
+                        enhanced_result
+                            .matching_info
+                            .missing_optional_fields
+                            .iter()
+                            .map(|f| &f.name)
+                            .collect::<Vec<_>>()
+                    );
 
                     if tx.send(Ok(response)).await.is_err() {
                         tracing::error!(

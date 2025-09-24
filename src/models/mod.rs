@@ -125,94 +125,221 @@ pub struct MatchingInfo {
     pub missing_optional_fields: Vec<MissingField>,
 }
 
+pub fn debug_parameter_matches(
+    parameter_matches: &[ParameterMatch],
+    endpoint_params: &[EndpointParameter],
+) {
+    use tracing::{debug, warn};
+
+    debug!("=== DEBUGGING PARAMETER CONSTRUCTION ===");
+
+    debug!(
+        "ParameterMatch objects ({} total):",
+        parameter_matches.len()
+    );
+    for (i, param) in parameter_matches.iter().enumerate() {
+        debug!("  [{}] name: '{}', value: {:?}", i, param.name, param.value);
+    }
+
+    debug!(
+        "EndpointParameter objects ({} total):",
+        endpoint_params.len()
+    );
+    let mut param_counts = std::collections::HashMap::new();
+    for (i, param) in endpoint_params.iter().enumerate() {
+        debug!(
+            "  [{}] name: '{}', required: {:?}, desc: '{}'",
+            i, param.name, param.required, param.description
+        );
+
+        // Count duplicates
+        *param_counts.entry(param.name.clone()).or_insert(0) += 1;
+    }
+
+    // Check for duplicates in endpoint params
+    for (name, count) in param_counts {
+        if count > 1 {
+            warn!(
+                "DUPLICATE EndpointParameter: '{}' appears {} times",
+                name, count
+            );
+        }
+    }
+
+    debug!("=== END DEBUGGING ===");
+}
+
 impl MatchingInfo {
     pub fn compute(parameters: &[ParameterMatch], endpoint_params: &[EndpointParameter]) -> Self {
-        use tracing::debug;
+        use std::collections::HashMap;
+        use tracing::{debug, warn};
 
-        debug!("=== MatchingInfo Debug ===");
-        debug!("Input parameters: {:#?}", parameters);
-        debug!("Endpoint parameters: {:#?}", endpoint_params);
+        debug!(
+            "MatchingInfo::compute called with {} ParameterMatch and {} EndpointParameter",
+            parameters.len(),
+            endpoint_params.len()
+        );
+
+        // Log what we receive
+        for param in parameters {
+            debug!("ParameterMatch: '{}' = {:?}", param.name, param.value);
+        }
+
+        for param in endpoint_params {
+            debug!(
+                "EndpointParameter: '{}' (required: {:?})",
+                param.name, param.required
+            );
+        }
 
         // Helper function to check if a parameter has a valid value
-        fn has_valid_value(param: &ParameterMatch) -> bool {
-            param
-                .value
-                .as_ref()
-                .map(|v| !v.trim().is_empty())
-                .unwrap_or(false)
+        fn has_valid_value(param: &ParameterMatch) -> Option<bool> {
+            param.value.as_ref().map(|v| !v.trim().is_empty())
         }
 
-        // Helper function to find matching parameter by name
-        fn find_matched_param<'a>(
-            param_name: &str,
-            parameters: &'a [ParameterMatch],
-        ) -> Option<&'a ParameterMatch> {
-            parameters.iter().find(|p| p.name == param_name)
+        // Deduplicate endpoint parameters by name (keep first occurrence)
+        let mut unique_params: HashMap<String, &EndpointParameter> = HashMap::new();
+        let mut duplicates_found = false;
+
+        for param in endpoint_params {
+            if unique_params.contains_key(&param.name) {
+                warn!(
+                    "DUPLICATE found: parameter '{}' appears multiple times",
+                    param.name
+                );
+                duplicates_found = true;
+            }
+            unique_params.entry(param.name.clone()).or_insert(param);
         }
 
-        // Separate endpoint parameters by requirement status
-        let (required_params, optional_params): (Vec<_>, Vec<_>) = endpoint_params
-            .iter()
-            .partition(|ep| ep.required.unwrap_or(false));
+        if duplicates_found {
+            warn!(
+                "Duplicates were found and removed. Unique parameters: {:?}",
+                unique_params.keys().collect::<Vec<_>>()
+            );
+        }
 
-        // Process required parameters
-        let (mapped_required, missing_required): (Vec<_>, Vec<_>) = required_params
-            .iter()
-            .map(|ep| {
-                let matched_param = find_matched_param(&ep.name, parameters);
-                let is_mapped = matched_param.map(has_valid_value).unwrap_or(false);
+        debug!(
+            "After deduplication: {} unique parameters",
+            unique_params.len()
+        );
 
-                if is_mapped {
-                    (Some(ep), None)
+        // Create lookup map for parameter matches
+        let param_lookup: HashMap<String, &ParameterMatch> =
+            parameters.iter().map(|p| (p.name.clone(), p)).collect();
+
+        debug!(
+            "Parameter lookup created with {} entries",
+            param_lookup.len()
+        );
+
+        // Single pass: process each unique endpoint parameter exactly once
+        let (mut required_results, mut optional_results): (Vec<_>, Vec<_>) = unique_params
+            .values()
+            .map(|endpoint_param| {
+                let is_required = endpoint_param.required.unwrap_or(false);
+                let matched_param = param_lookup.get(&endpoint_param.name);
+                let has_value = matched_param
+                    .and_then(|p| has_valid_value(p))
+                    .unwrap_or(false);
+
+                debug!(
+                    "Processing '{}': required={}, matched={}, has_value={}",
+                    endpoint_param.name,
+                    is_required,
+                    matched_param.is_some(),
+                    has_value
+                );
+
+                let result = ParameterResult {
+                    endpoint_param,
+                    has_value,
+                };
+
+                if is_required {
+                    debug!("  -> Adding to REQUIRED list");
+                    (Some(result), None)
                 } else {
-                    (
-                        None,
-                        Some(MissingField {
-                            name: ep.name.clone(),
-                            description: ep.description.clone(),
-                        }),
-                    )
+                    debug!("  -> Adding to OPTIONAL list");
+                    (None, Some(result))
                 }
             })
             .unzip();
 
-        // Process optional parameters
-        let (mapped_optional, missing_optional): (Vec<_>, Vec<_>) = optional_params
+        // Flatten the results
+        let required_results: Vec<ParameterResult> =
+            required_results.into_iter().flatten().collect();
+        let optional_results: Vec<ParameterResult> =
+            optional_results.into_iter().flatten().collect();
+
+        debug!("Required parameters: {} total", required_results.len());
+        for result in &required_results {
+            debug!(
+                "  Required: '{}' has_value={}",
+                result.endpoint_param.name, result.has_value
+            );
+        }
+
+        debug!("Optional parameters: {} total", optional_results.len());
+        for result in &optional_results {
+            debug!(
+                "  Optional: '{}' has_value={}",
+                result.endpoint_param.name, result.has_value
+            );
+        }
+
+        // Calculate counts and missing lists
+        let total_required_fields = required_results.len();
+        let mapped_required_fields = required_results.iter().filter(|r| r.has_value).count();
+        let missing_required_fields: Vec<MissingField> = required_results
             .iter()
-            .map(|ep| {
-                let matched_param = find_matched_param(&ep.name, parameters);
-                let is_mapped = matched_param.map(has_valid_value).unwrap_or(false);
-
-                if is_mapped {
-                    (Some(ep), None)
-                } else {
-                    (
-                        None,
-                        Some(MissingField {
-                            name: ep.name.clone(),
-                            description: ep.description.clone(),
-                        }),
-                    )
-                }
+            .filter(|r| !r.has_value)
+            .map(|r| MissingField {
+                name: r.endpoint_param.name.clone(),
+                description: r.endpoint_param.description.clone(),
             })
-            .unzip();
+            .collect();
 
-        // Extract counts and lists
-        let total_required_fields = required_params.len();
-        let mapped_required_fields = mapped_required.into_iter().flatten().count();
-        let missing_required_fields: Vec<MissingField> =
-            missing_required.into_iter().flatten().collect();
+        let total_optional_fields = optional_results.len();
+        let mapped_optional_fields = optional_results.iter().filter(|r| r.has_value).count();
+        let missing_optional_fields: Vec<MissingField> = optional_results
+            .iter()
+            .filter(|r| !r.has_value)
+            .map(|r| MissingField {
+                name: r.endpoint_param.name.clone(),
+                description: r.endpoint_param.description.clone(),
+            })
+            .collect();
 
-        let total_optional_fields = optional_params.len();
-        let mapped_optional_fields = mapped_optional.into_iter().flatten().count();
-        let missing_optional_fields: Vec<MissingField> =
-            missing_optional.into_iter().flatten().collect();
+        debug!("FINAL RESULTS:");
+        debug!(
+            "  Required: {}/{} mapped",
+            mapped_required_fields, total_required_fields
+        );
+        debug!(
+            "  Optional: {}/{} mapped",
+            mapped_optional_fields, total_optional_fields
+        );
+        debug!(
+            "  Missing required: {:?}",
+            missing_required_fields
+                .iter()
+                .map(|f| &f.name)
+                .collect::<Vec<_>>()
+        );
+        debug!(
+            "  Missing optional: {:?}",
+            missing_optional_fields
+                .iter()
+                .map(|f| &f.name)
+                .collect::<Vec<_>>()
+        );
 
         // Calculate completion percentage
         let completion_percentage = if total_required_fields > 0 {
             (mapped_required_fields as f32 / total_required_fields as f32) * 100.0
         } else {
-            100.0 // No required fields means 100% complete
+            100.0
         };
 
         // Determine status
@@ -298,4 +425,10 @@ impl MatchingInfo {
             format!("the {}", natural_name)
         }
     }
+}
+
+// Helper struct for cleaner processing
+struct ParameterResult<'a> {
+    endpoint_param: &'a EndpointParameter,
+    has_value: bool,
 }
