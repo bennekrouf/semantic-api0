@@ -4,6 +4,8 @@ pub mod providers;
 pub use providers::ModelsConfig;
 use serde::{Deserialize, Serialize};
 
+use crate::workflow::classify_intent::IntentType;
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MissingField {
     pub name: String,
@@ -94,6 +96,7 @@ pub struct EnhancedAnalysisResult {
     pub total_input_tokens: u32,
     pub total_output_tokens: u32,
     pub usage: UsageInfo,
+    pub intent: IntentType,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -144,9 +147,11 @@ impl MatchingInfo {
             processed_params.insert(endpoint_param.name.clone());
 
             let is_required = endpoint_param.required.unwrap_or(false);
-            let is_mapped = parameters
-                .iter()
-                .any(|p| p.name == endpoint_param.name && p.value.is_some());
+            let is_mapped = parameters.iter().any(|p| {
+                p.name == endpoint_param.name
+                    && p.value.is_some()
+                    && !p.value.as_ref().unwrap().trim().is_empty()
+            }); // Add empty check
 
             if is_required {
                 total_required += 1;

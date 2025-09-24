@@ -5,6 +5,7 @@ use crate::models::providers::ModelProvider;
 use crate::progressive_matching::{
     integrate_progressive_matching, ParameterValue, ProgressiveMatchingManager,
 };
+use crate::workflow::classify_intent::IntentType;
 use futures::Stream;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -281,15 +282,24 @@ impl SentenceService for SentenceAnalyzeService {
                         essential_path: Some(enhanced_result.essential_path),
                         api_group_id: Some(enhanced_result.api_group_id),
                         api_group_name: Some(enhanced_result.api_group_name),
-                        user_prompt: enhanced_result.user_prompt, // Add this line
+                        user_prompt: enhanced_result.user_prompt,
                         usage: Some(sentence::Usage {
-                            // Add this field
                             input_tokens: usage_info.input_tokens,
                             output_tokens: usage_info.output_tokens,
                             total_tokens: usage_info.total_tokens,
                             model: usage_info.model,
                             estimated: usage_info.estimated,
                         }),
+                        intent: match enhanced_result.intent {
+                            // ADD THIS
+                            IntentType::ActionableRequest => {
+                                sentence::IntentType::ActionableRequest as i32
+                            }
+                            IntentType::GeneralQuestion => {
+                                sentence::IntentType::GeneralQuestion as i32
+                            }
+                            IntentType::HelpRequest => sentence::IntentType::HelpRequest as i32,
+                        },
                         parameters: enhanced_result
                             .parameters
                             .into_iter()
@@ -307,6 +317,7 @@ impl SentenceService for SentenceAnalyzeService {
                             }
                         },
                         matching_info: Some(sentence::MatchingInfo {
+                            // ... rest of matching_info stays the same
                             status: if let Some(ref prog) = progressive_result {
                                 if prog.ready_for_execution {
                                     sentence::MatchingStatus::Complete as i32
@@ -351,7 +362,7 @@ impl SentenceService for SentenceAnalyzeService {
                                 enhanced_result.matching_info.completion_percentage
                             },
                             missing_required_fields: {
-                                // Deduplicate missing required fields
+                                // ... existing missing fields logic
                                 let mut unique_missing: Vec<sentence::MissingField> = Vec::new();
                                 let source_fields = if let Some(ref prog) = progressive_result {
                                     prog.missing_parameters
@@ -378,7 +389,6 @@ impl SentenceService for SentenceAnalyzeService {
                                 unique_missing
                             },
                             missing_optional_fields: {
-                                // Deduplicate missing optional fields
                                 let mut unique_missing: Vec<sentence::MissingField> = Vec::new();
                                 for field in enhanced_result.matching_info.missing_optional_fields {
                                     if !unique_missing.iter().any(|f| f.name == field.name) {

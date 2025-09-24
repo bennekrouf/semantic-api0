@@ -5,12 +5,13 @@ use crate::models::{
     EnhancedAnalysisResult, MatchingInfo, MatchingStatus, ParameterMatch, UsageInfo,
 };
 use crate::utils::email::validate_email;
-use crate::workflow::classify_intent::{classify_intent, IntentType};
+use crate::workflow::classify_intent::IntentType;
 use crate::workflow::find_closest_endpoint::find_closest_endpoint;
 use crate::workflow::match_fields::match_fields_semantic;
 use crate::workflow::sentence_to_json::sentence_to_json;
 use crate::workflow::{WorkflowConfig, WorkflowContext, WorkflowEngine, WorkflowStep};
-
+use crate::workflow::actions::classify_intent::classify_intent;
+use crate::help_response_handler::handle_help_request;
 use async_trait::async_trait;
 use std::error::Error;
 use std::sync::Arc;
@@ -491,6 +492,7 @@ steps:
         total_input_tokens: final_input_tokens,
         total_output_tokens: final_output_tokens,
         usage: usage_info,
+        intent: IntentType::ActionableRequest,
     })
 }
 
@@ -532,8 +534,7 @@ pub async fn analyze_sentence_enhanced(
     match intent {
         IntentType::ActionableRequest => {
             info!("Processing as actionable request - running workflow with retry logic");
-
-            // Try actionable analysis with retries
+            // ... existing actionable request logic ...
             match analyze_with_retry(
                 sentence,
                 provider.clone(),
@@ -552,7 +553,6 @@ pub async fn analyze_sentence_enhanced(
                             e
                         );
 
-                        // Fallback to general question handler
                         let conversational_result =
                             handle_general_question(sentence, provider).await?;
 
@@ -596,10 +596,11 @@ pub async fn analyze_sentence_enhanced(
                             }),
                             conversation_id,
                             matching_info,
-                            user_prompt: None, // No missing fields for general conversation
+                            user_prompt: None,
                             total_input_tokens: conversational_result.usage.input_tokens,
                             total_output_tokens: conversational_result.usage.output_tokens,
                             usage: usage_info,
+                            intent: IntentType::GeneralQuestion,
                         })
                     } else {
                         Err(e)
@@ -608,14 +609,14 @@ pub async fn analyze_sentence_enhanced(
             }
         }
 
-        IntentType::GeneralQuestion => {
-            info!("Processing as general question - generating conversational response");
+        IntentType::HelpRequest => {
+            info!("Processing as help request - generating capabilities list");
 
-            // Handle general questions with a simple response
-            let conversational_result = handle_general_question(sentence, provider.clone()).await?;
+            // Handle help requests by listing available capabilities
+            let help_result = handle_help_request(sentence, &enhanced_endpoints, provider.clone()).await?;
 
             let matching_info = MatchingInfo {
-                status: MatchingStatus::Complete, // General questions are always "complete"
+                status: MatchingStatus::Complete, // Help requests are always "complete"
                 total_required_fields: 0,
                 mapped_required_fields: 0,
                 total_optional_fields: 0,
@@ -625,7 +626,58 @@ pub async fn analyze_sentence_enhanced(
                 missing_optional_fields: vec![],
             };
 
-            // Return a mock EnhancedAnalysisResult for general conversations
+            let usage_info = UsageInfo {
+                input_tokens: help_result.usage.input_tokens,
+                output_tokens: help_result.usage.output_tokens,
+                total_tokens: help_result.usage.total_tokens,
+                model: provider.get_model_name().to_string(),
+                estimated: help_result.usage.estimated,
+            };
+
+            Ok(EnhancedAnalysisResult {
+                endpoint_id: "help_capabilities".to_string(),
+                endpoint_name: "Help - Available Capabilities".to_string(),
+                endpoint_description: "List of available system capabilities and how to use them".to_string(),
+                verb: "GET".to_string(),
+                base: "help".to_string(),
+                path: "/capabilities".to_string(),
+                essential_path: "/capabilities".to_string(),
+                api_group_id: "help".to_string(),
+                api_group_name: "Help System".to_string(),
+                parameters: vec![],
+                raw_json: serde_json::json!({
+                    "type": "help_request",
+                    "response": help_result.content,
+                    "intent": "help_request",
+                    "capabilities_count": enhanced_endpoints.len()
+                }),
+                conversation_id,
+                matching_info,
+                user_prompt: None,
+                total_input_tokens: usage_info.input_tokens,
+                total_output_tokens: usage_info.output_tokens,
+                usage: usage_info,
+                intent: IntentType::HelpRequest,
+            })
+        }
+
+        IntentType::GeneralQuestion => {
+            info!("Processing as general question - generating conversational response");
+
+            // Handle general questions with a simple response
+            let conversational_result = handle_general_question(sentence, provider.clone()).await?;
+
+            let matching_info = MatchingInfo {
+                status: MatchingStatus::Complete,
+                total_required_fields: 0,
+                mapped_required_fields: 0,
+                total_optional_fields: 0,
+                mapped_optional_fields: 0,
+                completion_percentage: 100.0,
+                missing_required_fields: vec![],
+                missing_optional_fields: vec![],
+            };
+
             let usage_info = UsageInfo {
                 input_tokens: conversational_result.usage.input_tokens,
                 output_tokens: conversational_result.usage.output_tokens,
@@ -655,7 +707,8 @@ pub async fn analyze_sentence_enhanced(
                 user_prompt: None,
                 total_input_tokens: usage_info.input_tokens,
                 total_output_tokens: usage_info.output_tokens,
-                usage: usage_info, // Add this field
+                usage: usage_info,
+                intent: IntentType::GeneralQuestion,
             })
         }
     }

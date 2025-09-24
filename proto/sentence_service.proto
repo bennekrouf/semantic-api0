@@ -18,6 +18,12 @@ message Parameter {
   optional string semantic_value = 3;
 }
 
+enum IntentType {
+  ACTIONABLE_REQUEST = 0;
+  GENERAL_QUESTION = 1;
+  HELP_REQUEST = 2;
+}
+
 message Usage {
   uint32 input_tokens = 1;
   uint32 output_tokens = 2;
@@ -42,6 +48,7 @@ message SentenceResponse {
   MatchingInfo matching_info = 13;
   optional string user_prompt = 14;
   optional Usage usage = 15;
+  IntentType intent = 16;
 }
 
 message MessageRequest {

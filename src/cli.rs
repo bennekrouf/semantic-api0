@@ -3,17 +3,20 @@ use clap::Parser;
 use std::{error::Error, sync::Arc};
 use tracing::{error, info};
 
+use crate::comparison_test::{run_model_comparison, EnhancedTestConfig};
 use crate::endpoint_client::get_default_api_url;
 use crate::utils::email::validate_email;
+use crate::workflow::classify_intent::IntentType;
 use crate::{analyze_sentence::analyze_sentence_enhanced, models::providers::ModelProvider};
 
 pub fn display_custom_help() {
     println!(
         "
-╭─────────────────────────────────────────────╮
-│                  Semantic                      │
-│         Natural Language API Matcher           │
-╰─────────────────────────────────────────────╯
+╭─────────────────────────────────────────────────╮
+│                  Semantic                       │
+│         Natural Language API Matcher            │
+│           with Intent Classification            │
+╰─────────────────────────────────────────────────╯
 
 ARGUMENTS:
   --provider PROVIDER  AI provider to use
@@ -35,13 +38,24 @@ USAGE EXAMPLES:
   
   2. Analyze text (email required):
      semantic --email user@example.com \"analyze this text\"
-     semantic --provider deepseek --email user@example.com \"analyze this text\"
+     semantic --provider deepseek --email user@example.com \"help me\"
   
   3. Use remote endpoints:
-     semantic --api http://example.com:50053 --email user@example.com \"analyze this\"
+     semantic --api http://example.com:50053 --email user@example.com \"what can i do\"
 
-  4. Run comparison test:
+  4. Run standard comparison test:
      semantic --compare --iterations 10
+
+  5. Run enhanced intent classification test:
+     semantic --compare-intents --iterations 5
+
+  6. List available endpoints:
+     semantic --list-endpoints --email user@example.com
+
+INTENT TYPES SUPPORTED:
+  📋 Actionable Request: \"Send email to john@example.com\"
+  💬 General Question: \"What is machine learning?\"
+  ❓ Help Request: \"What can I do?\" / \"Que puis-je faire?\"
 
 For more information, use the standard help:
   semantic --help
@@ -92,12 +106,196 @@ pub struct Cli {
     #[arg(long, help = "Run comparison test between models and prompt versions")]
     pub compare: bool,
 
+    #[arg(long, help = "Run enhanced intent classification comparison test")]
+    pub compare_intents: bool,
+
     #[arg(
         long,
         default_value = "20",
         help = "Number of iterations per test configuration"
     )]
     pub iterations: u32,
+}
+
+// Update handle_cli function to handle enhanced intent testing:
+pub async fn handle_cli(
+    mut cli: Cli,
+    provider: Arc<dyn ModelProvider>,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    if cli.compare {
+        let config = crate::comparison_test::TestConfig {
+            iterations: cli.iterations,
+            sentence: "tu peux me générer un cv pour anthony en fr avec le template keyteo"
+                .to_string(),
+            conversation_id: "e0079e96-6c03-4a98-ab75-98acf2ebc470".to_string(),
+            email: "bennekrouf.mohamed@gmail.com".to_string(),
+            api_url: "http://localhost:50057".to_string(),
+            ..Default::default()
+        };
+        crate::comparison_test::run_custom_comparison(config).await?;
+        return Ok(());
+    }
+
+    if cli.compare_intents {
+        // let config = EnhancedTestConfig {
+        //     iterations: cli.iterations,
+        //     email: "test@example.com".to_string(),
+        //     api_url: cli
+        //         .api
+        //         .clone()
+        //         .unwrap_or_else(|| "http://localhost:50057".to_string()),
+        //     ..Default::default()
+        // };
+        // let config = crate::comparison_test::EnhancedTestConfig::default();
+        // let tester = EnhancedModelComparisonTester::new(config);
+        // tester.run_enhanced_comparison().await?;
+        run_model_comparison().await?;
+
+        return Ok(());
+    }
+
+    // ... rest of existing handle_cli logic remains the same ...
+
+    // Handle list endpoints command
+    if cli.list_endpoints {
+        let email = match &cli.email {
+            Some(email) => email.clone(),
+            None => {
+                error!("Email is required when listing endpoints");
+                return Err(
+                    "Email is required when listing endpoints. Please provide it with --email"
+                        .into(),
+                );
+            }
+        };
+
+        // If API URL not provided in CLI, try to get default from config
+        if cli.api.is_none() {
+            match get_default_api_url().await {
+                Ok(url) => {
+                    info!("Using default API URL from config: {}", url);
+                    cli.api = Some(url);
+                }
+                Err(e) => {
+                    return Err(
+                        format!("No API URL provided and failed to get default: {}", e).into(),
+                    );
+                }
+            }
+        }
+
+        return list_endpoints_for_email(&email, cli.api).await;
+    }
+
+    if let Some(prompt) = cli.prompt.clone() {
+        // Email is required when analyzing a sentence
+        let email = match &cli.email {
+            Some(email) => {
+                // Validate email
+                if let Err(e) = validate_email(email) {
+                    error!("Invalid email: {}", e);
+                    return Err(
+                        format!("Email is required when analyzing a sentence: {}", e).into(),
+                    );
+                }
+                email.clone()
+            }
+            None => {
+                error!("Email is required when analyzing a sentence");
+                return Err(
+                    "Email is required when analyzing a sentence. Please provide it with --email"
+                        .into(),
+                );
+            }
+        };
+
+        info!("Using {} API for analysis", cli.provider);
+
+        // If API URL not provided in CLI, try to get default from config
+        if cli.api.is_none() {
+            match get_default_api_url().await {
+                Ok(url) => {
+                    info!("Using default API URL from config: {}", url);
+                    cli.api = Some(url);
+                }
+                Err(e) => {
+                    info!(
+                        "Could not get default API URL, using local endpoints: {}",
+                        e
+                    );
+                }
+            }
+        }
+
+        let endpoint_source = match &cli.api {
+            Some(api_url) => format!("remote API ({})", api_url),
+            None => "local file".to_string(),
+        };
+
+        info!("Using endpoints from {}", endpoint_source);
+        info!("Analyzing prompt via CLI: {}", prompt);
+
+        // Pass the API URL and email to analyze_sentence
+        let result = analyze_sentence_enhanced(&prompt, provider, cli.api, &email, None).await?;
+
+        println!("\nAnalysis Results:");
+        println!(
+            "Intent: {:?}",
+            match result.intent {
+                IntentType::ActionableRequest => "Actionable Request",
+                IntentType::GeneralQuestion => "General Question",
+                IntentType::HelpRequest => "Help Request",
+            }
+        );
+        println!(
+            "Endpoint: {} ({})",
+            result.endpoint_id, result.endpoint_description
+        );
+
+        println!("\nUsage Information:");
+        println!("  Model: {}", result.usage.model);
+        println!("  Input tokens: {}", result.usage.input_tokens);
+        println!("  Output tokens: {}", result.usage.output_tokens);
+        println!("  Total tokens: {}", result.usage.total_tokens);
+        println!(
+            "  Estimated: {}",
+            if result.usage.estimated { "Yes" } else { "No" }
+        );
+
+        // Show response content for help/general questions
+        match result.intent {
+            IntentType::HelpRequest | IntentType::GeneralQuestion => {
+                if let Some(response) = result.raw_json.get("response").and_then(|v| v.as_str()) {
+                    println!("\nResponse:");
+                    println!("{}", response);
+                }
+            }
+            IntentType::ActionableRequest => {
+                println!("\nParameters:");
+                for param in result.parameters {
+                    println!("\n{} ({}):", param.name, param.description);
+                    if let Some(semantic) = param.value {
+                        println!("  Semantic Match: {}", semantic);
+                    }
+                }
+
+                println!("\nRaw JSON Output:");
+                println!("{}", serde_json::to_string_pretty(&result.raw_json)?);
+
+                let status_text = match result.matching_info.status {
+                    crate::models::MatchingStatus::Complete => "Complete",
+                    crate::models::MatchingStatus::Partial => "Partial",
+                    crate::models::MatchingStatus::Incomplete => "Incomplete",
+                };
+
+                println!(
+                    "Matching Status: {} ({:.1}% complete)",
+                    status_text, result.matching_info.completion_percentage
+                );
+            }
+        }
+    }
+    Ok(())
 }
 
 // Add this function to handle endpoint listing
@@ -194,146 +392,5 @@ pub async fn list_endpoints_for_email(
         }
     }
 
-    Ok(())
-}
-
-pub async fn handle_cli(
-    mut cli: Cli,
-    provider: Arc<dyn ModelProvider>,
-) -> Result<(), Box<dyn Error + Send + Sync>> {
-    if cli.compare {
-        let config = crate::comparison_test::TestConfig {
-            iterations: cli.iterations,
-            sentence: "tu peux me génèrer un cv pour anthony en fr avec le template keyteo"
-                .to_string(),
-            conversation_id: "e0079e96-6c03-4a98-ab75-98acf2ebc470".to_string(),
-            email: "bennekrouf.mohamed@gmail.com".to_string(),
-            api_url: "http://localhost:50057".to_string(),
-            ..Default::default()
-        };
-        crate::comparison_test::run_custom_comparison(config).await?;
-        return Ok(());
-    }
-
-    // Handle list endpoints command
-    if cli.list_endpoints {
-        let email = match &cli.email {
-            Some(email) => email.clone(),
-            None => {
-                error!("Email is required when listing endpoints");
-                return Err(
-                    "Email is required when listing endpoints. Please provide it with --email"
-                        .into(),
-                );
-            }
-        };
-
-        // If API URL not provided in CLI, try to get default from config
-        if cli.api.is_none() {
-            match get_default_api_url().await {
-                Ok(url) => {
-                    info!("Using default API URL from config: {}", url);
-                    cli.api = Some(url);
-                }
-                Err(e) => {
-                    return Err(
-                        format!("No API URL provided and failed to get default: {}", e).into(),
-                    );
-                }
-            }
-        }
-
-        return list_endpoints_for_email(&email, cli.api).await;
-    }
-
-    if let Some(prompt) = cli.prompt.clone() {
-        // Email is required when analyzing a sentence
-        let email = match &cli.email {
-            Some(email) => {
-                // Validate email
-                if let Err(e) = validate_email(email) {
-                    error!("Invalid email: {}", e);
-                    return Err(
-                        format!("Email is required when analyzing a sentence: {}", e).into(),
-                    );
-                }
-                email.clone()
-            }
-            None => {
-                error!("Email is required when analyzing a sentence");
-                return Err(
-                    "Email is required when analyzing a sentence. Please provide it with --email"
-                        .into(),
-                );
-            }
-        };
-
-        info!("Using {} API for analysis", cli.provider);
-
-        // If API URL not provided in CLI, try to get default from config
-        if cli.api.is_none() {
-            match get_default_api_url().await {
-                Ok(url) => {
-                    info!("Using default API URL from config: {}", url);
-                    cli.api = Some(url);
-                }
-                Err(e) => {
-                    info!(
-                        "Could not get default API URL, using local endpoints: {}",
-                        e
-                    );
-                }
-            }
-        }
-
-        let endpoint_source = match &cli.api {
-            Some(api_url) => format!("remote API ({})", api_url),
-            None => "local file".to_string(),
-        };
-
-        info!("Using endpoints from {}", endpoint_source);
-        info!("Analyzing prompt via CLI: {}", prompt);
-
-        // Pass the API URL and email to analyze_sentence
-        let result = analyze_sentence_enhanced(&prompt, provider, cli.api, &email, None).await?;
-
-        println!("\nAnalysis Results:");
-        println!(
-            "Endpoint: {} ({})",
-            result.endpoint_id, result.endpoint_description
-        );
-
-        println!("\nUsage Information:");
-        println!("  Model: {}", result.usage.model);
-        println!("  Input tokens: {}", result.usage.input_tokens);
-        println!("  Output tokens: {}", result.usage.output_tokens);
-        println!("  Total tokens: {}", result.usage.total_tokens);
-        println!(
-            "  Estimated: {}",
-            if result.usage.estimated { "Yes" } else { "No" }
-        );
-
-        println!("\nParameters:");
-        for param in result.parameters {
-            println!("\n{} ({}):", param.name, param.description);
-            if let Some(semantic) = param.value {
-                println!("  Semantic Match: {}", semantic);
-            }
-        }
-
-        println!("\nRaw JSON Output:");
-        println!("{}", serde_json::to_string_pretty(&result.raw_json)?);
-
-        let status_text = match result.matching_info.status {
-            crate::models::MatchingStatus::Complete => "Complete",
-            crate::models::MatchingStatus::Partial => "Partial",
-            crate::models::MatchingStatus::Incomplete => "Incomplete",
-        };
-
-        println!(
-            "Matching Status: {} ({:.1}% complete)",
-            status_text, result.matching_info.completion_percentage
-        );
-    }
     Ok(())
 }

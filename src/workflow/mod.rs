@@ -1,4 +1,4 @@
-mod actions;
+pub mod actions;
 mod config;
 pub mod context;
 mod engine;

@@ -1,9 +1,9 @@
 // src/models/providers/cohere.rs - Fix token extraction
-use super::{GenerationResult, ModelConfig, ModelProvider, ProviderConfig, TokenCounter};
+use super::{GenerationResult, ModelConfig, ModelProvider, ProviderConfig};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
-use tracing::{debug, error, warn};
+use tracing::{debug, error};
 
 pub struct CohereProvider {
     api_key: String,

@@ -125,4 +125,128 @@ prompts:
           
           The input "Générer CV pour john-doe en français" is clearly requesting CV generation action.
           Think through your reasoning, then respond with exactly one word which are either ACTIONABLE or GENERAL
+      v2:
+        template: |
+          Analyze this user input: "{sentence}"
+          
+          Available system actions:
+          - {endpoints_list}
+          
+          Determine if the user wants to:
+          1. ACTIONABLE: Perform a specific action using one of the available system functions
+          2. GENERAL: Ask a general question, request information, or have a conversation
+          
+          Examples of ACTIONABLE requests (any language):
+          - "Send an email to John or Envoyer un email à John"
+          - "Schedule a meeting for tomorrow / Planifier une réunion pour demain"
+          - "Create a support ticket / Créer un ticket de support"
+          - "Generate CV for john-doe / Générer CV pour john-doe"
+          
+          Examples of GENERAL questions (any language):
+          - "What is machine learning? / Qu'est-ce que l'apprentissage automatique?"
+          - "How does email work? / Comment fonctionne l'email?"
+          - "Tell me about your capabilities / Parlez-moi de vos capacités"
+          
+          The input "Générer CV pour john-doe en français" is clearly requesting CV generation action.
+          Think through your reasoning, then respond with exactly one word which are either ACTIONABLE or GENERAL
+      v3:
+        template: |
+          Analyze this user input: "{sentence}"
+          
+          Available system capabilities:
+          {endpoints_list}
+          
+          Classify the intent into exactly ONE of these categories:
+          
+          1. ACTIONABLE: User wants to perform a specific action using available system functions
+          Examples (any language):
+          - "Send an email to John" / "Envoyer un email à John"
+          - "Schedule a meeting for tomorrow" / "Planifier une réunion pour demain"
+          - "Create a support ticket" / "Créer un ticket de support"
+          - "Generate CV for john-doe" / "Générer CV pour john-doe"
+          
+          2. HELP: User wants to know what actions are available or how to use the system
+          Examples (any language):
+          - "What can I do?" / "Que puis-je faire?"
+          - "Help me" / "Aide-moi"
+          - "Show me available options" / "Montre-moi les options disponibles"
+          - "What actions are possible?" / "Quelles actions sont possibles?"
+          - "How can I use this?" / "Comment puis-je utiliser ceci?"
+          - "List capabilities" / "Lister les capacités"
+          - "What features do you have?" / "Quelles fonctionnalités avez-vous?"
+          
+          3. GENERAL: General conversation, questions about topics not related to system actions
+          Examples (any language):
+          - "What is machine learning?" / "Qu'est-ce que l'apprentissage automatique?"
+          - "How does email work?" / "Comment fonctionne l'email?"
+          - "Tell me about the weather" / "Parlez-moi de la météo"
+          - "Hello, how are you?" / "Bonjour, comment allez-vous?"
+          
+          Respond with exactly one word: ACTIONABLE, HELP, or GENERAL
+    default_version: "v3"
+
+  help_response:
+    versions:
+      v1:
+        template: |
+          The user asked for help: "{sentence}"
+          Detected language: {detected_language}
+          
+          Available capabilities for this user:
+          {endpoints_list}
+          
+          Generate a helpful response in the detected language ({detected_language}) that:
+          1. Acknowledges their help request warmly
+          2. Lists the available actions they can perform
+          3. Provides 1-2 concrete examples for the most useful actions
+          4. Encourages them to try these actions
+          
+          Language-specific guidelines:
+          - en: Use friendly, professional English
+          - fr: Use polite French with "vous" form, include appropriate French greetings
+          - es: Use polite Spanish with "usted" form where appropriate
+          - de: Use polite German with "Sie" form
+          - it: Use polite Italian with "Lei" form
+          - pt: Use polite Portuguese
+          - Other languages: Use the most appropriate formal/polite register
+          
+          Keep the tone friendly, helpful, and concise. Match the user's detected language exactly.
+          
+          Examples by language:
+          
+          English (en):
+          "I can help you with several actions! Here's what you can do:
+          • Send emails with attachments
+          • Schedule meetings and appointments  
+          • Create support tickets for issues
+          • Generate reports and documents
+          
+          For example, you could say 'Send an email to john@example.com about the meeting' or 'Schedule a meeting tomorrow at 2pm with the team'. What would you like to try?"
+          
+          French (fr):
+          "Je peux vous aider avec plusieurs actions! Voici ce que vous pouvez faire:
+          • Envoyer des emails avec des pièces jointes
+          • Planifier des réunions et rendez-vous
+          • Créer des tickets de support pour les problèmes
+          • Générer des rapports et documents
+          
+          Par exemple, vous pourriez dire 'Envoyer un email à john@example.com concernant la réunion' ou 'Planifier une réunion demain à 14h avec l'équipe'. Que souhaitez-vous essayer?"
+          
+          Spanish (es):
+          "¡Puedo ayudarle con varias acciones! Esto es lo que puede hacer:
+          • Enviar emails con archivos adjuntos
+          • Programar reuniones y citas
+          • Crear tickets de soporte para problemas
+          • Generar reportes y documentos
+          
+          Por ejemplo, podría decir 'Enviar un email a john@example.com sobre la reunión' o 'Programar una reunión mañana a las 2pm con el equipo'. ¿Qué le gustaría probar?"
+          
+          German (de):
+          "Ich kann Ihnen mit verschiedenen Aktionen helfen! Hier ist, was Sie tun können:
+          • E-Mails mit Anhängen senden
+          • Meetings und Termine planen
+          • Support-Tickets für Probleme erstellen
+          • Berichte und Dokumente generieren
+          
+          Zum Beispiel könnten Sie sagen 'E-Mail an john@example.com über das Meeting senden' oder 'Meeting morgen um 14 Uhr mit dem Team planen'. Was möchten Sie ausprobieren?"
     default_version: "v1"

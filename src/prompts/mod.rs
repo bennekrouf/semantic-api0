@@ -32,6 +32,38 @@ impl PromptManager {
         Ok(Self { config })
     }
 
+    pub fn format_help_response(
+        &self,
+        sentence: &str,
+        endpoints_list: &str,
+        version: Option<&str>,
+    ) -> String {
+        let template = self
+            .get_prompt("help_response", version)
+            .unwrap_or_default();
+
+        template
+            .replace("{sentence}", sentence)
+            .replace("{endpoints_list}", endpoints_list)
+    }
+
+    pub fn format_help_response_with_language(
+        &self,
+        sentence: &str,
+        endpoints_list: &str,
+        detected_language: &str,
+        version: Option<&str>,
+    ) -> String {
+        let template = self
+            .get_prompt("help_response", version)
+            .unwrap_or_default();
+
+        template
+            .replace("{sentence}", sentence)
+            .replace("{endpoints_list}", endpoints_list)
+            .replace("{detected_language}", detected_language)
+    }
+
     /// Gets a prompt template by name and optional version
     pub fn get_prompt(&self, name: &str, version: Option<&str>) -> Option<&str> {
         let prompt_versions = self.config.prompts.get(name)?;

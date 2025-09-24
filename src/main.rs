@@ -6,6 +6,7 @@ mod conversation; // Add this new module
 mod endpoint_client;
 mod general_question_handler;
 mod grpc_server;
+mod help_response_handler;
 mod json_helper;
 mod models;
 mod progressive_matching;
@@ -13,7 +14,6 @@ mod prompts;
 mod sentence_service;
 mod utils;
 mod workflow;
-
 use crate::models::config::load_models_config;
 use crate::models::providers::{create_provider, ModelProvider, ProviderConfig};
 use std::sync::Arc;
