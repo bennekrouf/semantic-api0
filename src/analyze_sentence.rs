@@ -308,7 +308,7 @@ async fn try_actionable_analysis(
     email: &str,
     conversation_id: Option<String>,
 ) -> Result<EnhancedAnalysisResult, Box<dyn Error + Send + Sync>> {
-    let model = provider.get_model_name().to_string();
+    // let model = provider.get_model_name().to_string();
 
     // Run the full workflow for actionable requests
     const ENHANCED_WORKFLOW_CONFIG: &str = r#"

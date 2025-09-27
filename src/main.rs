@@ -17,7 +17,7 @@ mod workflow;
 use crate::models::config::load_models_config;
 use crate::models::providers::{create_provider, ModelProvider, ProviderConfig};
 use std::sync::Arc;
-
+mod sentence_analysis;
 use clap::Parser;
 use cli::{display_custom_help, handle_cli, Cli};
 use dotenv::dotenv;

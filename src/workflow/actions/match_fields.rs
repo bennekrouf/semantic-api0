@@ -188,7 +188,7 @@ async fn try_semantic_matching(
     );
 
     let models_config = load_models_config().await?;
-    let model_config = &models_config.semantic_match;
+    let model_config = &models_config.default;
 
     let result = provider.generate(&prompt, model_config).await?;
     debug!("Semantic matching raw response: {}", result.content);

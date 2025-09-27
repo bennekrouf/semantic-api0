@@ -15,9 +15,8 @@ pub async fn handle_general_question(
     );
 
     let models_config = load_models_config().await?;
-    let model_config = &models_config.sentence_to_json; // Reuse existing config
+    let model_config = &models_config.default;
 
     let result = provider.generate(&prompt, model_config).await?;
     Ok(result) // Return the full result with token usage
 }
-

@@ -14,7 +14,7 @@ pub async fn sentence_to_json(
     let full_prompt = prompt_manager.format_sentence_to_json(sentence, Some("v1"));
 
     let models_config = load_models_config().await?;
-    let model_config = &models_config.sentence_to_json;
+    let model_config = &models_config.default;
 
     let result = provider.generate(&full_prompt, model_config).await?;
 
@@ -108,7 +108,7 @@ pub async fn sentence_to_json_structured(
 
     // Load model configuration
     let models_config = load_models_config().await?;
-    let model_config = &models_config.sentence_to_json;
+    let model_config = &models_config.default;
 
     let result = provider.generate(&full_prompt, model_config).await?;
     debug!(

@@ -6,7 +6,7 @@ use std::error::Error;
 use std::sync::Arc;
 use tracing::{debug, info};
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub enum IntentType {
     ActionableRequest,
     GeneralQuestion,
@@ -28,7 +28,7 @@ pub async fn classify_intent(
     debug!("Generated intent classification prompt: {}", prompt);
 
     let models_config = load_models_config().await?;
-    let model_config = &models_config.intent_classification;
+    let model_config = &models_config.default;
 
     let response = provider.generate(&prompt, model_config).await?;
     debug!("Intent classification response: {:?}", response);

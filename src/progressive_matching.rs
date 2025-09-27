@@ -126,6 +126,7 @@ impl ProgressiveMatchingManager {
                 conversation_id TEXT NOT NULL,
                 endpoint_id TEXT NOT NULL,
                 parameters TEXT NOT NULL,
+                completion_percentage REAL NOT NULL DEFAULT 0.0,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 PRIMARY KEY (conversation_id, endpoint_id)
@@ -205,6 +206,53 @@ impl ProgressiveMatchingManager {
         Ok(())
     }
 
+    pub async fn get_incomplete_match(
+        &self,
+        conversation_id: &str,
+    ) -> Result<Option<OngoingMatch>, Box<dyn Error + Send + Sync>> {
+        let conn = self.pool.get().await?;
+
+        let result = conn
+            .query_row(
+                "SELECT conversation_id, endpoint_id, parameters, created_at, updated_at 
+                 FROM ongoing_matches 
+                 WHERE conversation_id = ?
+                 LIMIT 1", // Should only be one per conversation anyway
+                params![conversation_id],
+                |row| {
+                    Ok(OngoingMatch {
+                        conversation_id: row.get(0)?,
+                        endpoint_id: row.get(1)?,
+                        parameters: row.get(2)?,
+                        created_at: row.get(3)?,
+                        updated_at: row.get(4)?,
+                    })
+                },
+            )
+            .optional()?;
+
+        Ok(result)
+    }
+
+    pub async fn complete_match(
+        &self,
+        conversation_id: &str,
+        endpoint_id: &str,
+    ) -> Result<(), Box<dyn Error + Send + Sync>> {
+        let conn = self.pool.get().await?;
+
+        conn.execute(
+            "DELETE FROM ongoing_matches WHERE conversation_id = ? AND endpoint_id = ?",
+            params![conversation_id, endpoint_id],
+        )?;
+
+        info!(
+            "Completed and cleaned up match for conversation: {}",
+            conversation_id
+        );
+        Ok(())
+    }
+
     pub async fn get_match(
         &self,
         conversation_id: &str,
@@ -236,6 +284,7 @@ impl ProgressiveMatchingManager {
         conversation_id: &str,
         endpoint_id: &str,
         required_parameters: Vec<String>,
+        endpoint_parameters: &[crate::models::EndpointParameter], // Add this parameter
     ) -> Result<ProgressiveMatchResult, Box<dyn Error + Send + Sync>> {
         let ongoing_match = self.get_match(conversation_id, endpoint_id).await?;
 
@@ -245,19 +294,26 @@ impl ProgressiveMatchingManager {
             Vec::new()
         };
 
-        let matched_names: Vec<String> =
-            matched_parameters.iter().map(|p| p.name.clone()).collect();
-        let missing_parameters: Vec<String> = required_parameters
-            .iter()
-            .filter(|req| !matched_names.contains(req))
-            .cloned()
-            .collect();
+        // Generic parameter matching using endpoint definitions
+        let mut satisfied_required_params = Vec::new();
+        let mut missing_parameters = Vec::new();
+
+        for required_param in &required_parameters {
+            let is_satisfied =
+                is_parameter_satisfied(required_param, &matched_parameters, endpoint_parameters);
+
+            if is_satisfied {
+                satisfied_required_params.push(required_param.clone());
+            } else {
+                missing_parameters.push(required_param.clone());
+            }
+        }
 
         let is_complete = missing_parameters.is_empty();
         let completion_percentage = if required_parameters.is_empty() {
             100.0
         } else {
-            (matched_names.len() as f32 / required_parameters.len() as f32) * 100.0
+            (satisfied_required_params.len() as f32 / required_parameters.len() as f32) * 100.0
         };
 
         Ok(ProgressiveMatchResult {
@@ -273,18 +329,65 @@ impl ProgressiveMatchingManager {
     }
 }
 
+// Generic parameter satisfaction checker
+fn is_parameter_satisfied(
+    required_param: &str,
+    matched_parameters: &[ParameterValue],
+    endpoint_parameters: &[crate::models::EndpointParameter],
+) -> bool {
+    // Find the endpoint parameter definition
+    let endpoint_param = endpoint_parameters
+        .iter()
+        .find(|p| p.name == required_param);
+
+    for matched in matched_parameters {
+        // Direct match
+        if matched.name == required_param {
+            return true;
+        }
+
+        // Check alternatives from endpoint definition
+        if let Some(ep) = endpoint_param {
+            if let Some(ref alternatives) = ep.alternatives {
+                if alternatives.contains(&matched.name) {
+                    return true;
+                }
+            }
+        }
+
+        // Reverse check: see if the matched parameter accepts this required param as alternative
+        if let Some(matched_endpoint_param) =
+            endpoint_parameters.iter().find(|p| p.name == matched.name)
+        {
+            if let Some(ref alternatives) = matched_endpoint_param.alternatives {
+                if alternatives.contains(&required_param.to_string()) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    false
+}
+
 pub async fn integrate_progressive_matching(
     conversation_id: &str,
     endpoint_id: &str,
     new_parameters: Vec<ParameterValue>,
     required_parameter_names: Vec<String>,
     manager: &ProgressiveMatchingManager,
+    endpoint_parameters: &[crate::models::EndpointParameter], // Add this parameter
 ) -> Result<ProgressiveMatchResult, Box<dyn Error + Send + Sync>> {
     manager
         .update_match(conversation_id, endpoint_id, new_parameters)
         .await?;
     let result = manager
-        .check_completion(conversation_id, endpoint_id, required_parameter_names)
+        .check_completion(
+            conversation_id,
+            endpoint_id,
+            required_parameter_names,
+            endpoint_parameters,
+        )
         .await?;
 
     debug!(

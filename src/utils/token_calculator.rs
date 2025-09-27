@@ -177,21 +177,6 @@ impl EnhancedTokenCalculator {
             estimated: true,
         }
     }
-
-    /// Update estimation based on actual API response (for future calibration)
-    pub fn calibrate_from_actual(&mut self, provider: &str, text: &str, actual_tokens: u32) {
-        if let Some(ratio) = self.provider_rates.get_mut(provider) {
-            if !text.is_empty() && actual_tokens > 0 {
-                let actual_chars_per_token = text.len() as f32 / actual_tokens as f32;
-                // Exponential moving average to gradually adjust
-                ratio.chars_per_token = ratio.chars_per_token * 0.9 + actual_chars_per_token * 0.1;
-                debug!(
-                    "Calibrated {} chars_per_token to {:.2} based on actual usage",
-                    provider, ratio.chars_per_token
-                );
-            }
-        }
-    }
 }
 
 impl Default for EnhancedTokenCalculator {

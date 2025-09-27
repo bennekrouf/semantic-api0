@@ -155,10 +155,10 @@ impl Default for TestConfig {
             ],
             prompt_versions: vec!["v1".to_string(), "v2".to_string(), "v3".to_string()],
             iterations: 20,
-            sentence: "the person is anthony. Is he a good match for the job url https://www.linkedin.com/jobs/view/4297651963/?alternateChannel=search&MMT7jj1mjY9ClS8g".to_string(),
+            sentence: "here is an action : is jane a good fit for this job post url : https://www.linkedin.com/jobs/view/4237328365/?alternateChannel=search&eBP=CwEAAAGZf8gRbRQYqthWdmTGt5IAkrmRYIzdFksa4Jfsjr2Na737AI_XbTSiyq8ebQcyQ52QHpvrvlznIoAiSk0bEBaoJLdOG-TIxpN5YbOlcHn0adh9vYhEPEfD60K82abXDZUNNNlf-kfgfwfzzDk2uAzHtk1uMLhNszcliVLxA2-OcOSKxZ5gqXYwz0mczVmFXSyMz02fd9aDzE71RPiXgkZ2nFwxw7kbEQXsFmxuB3BeyG1qYD8_Kh72Ni6i8aMgm7oghUGPZF1qRXCyUFheW3CeaXRCWRO9TFmioGcT295oO8R-2xZvR4atqVuo3r-lhBY0foc3kYho5uyURsZQ6_6mvM8mQfx6BrXS6M9dhk8jRd1xI2wB6SC99oBA_Ak2I_C0scID1USe3_s0BPRK2SfDcVZyRRbs7abvSC_EEel5o98USxoR3lzfY9HOmVEBEqCsoT45NbKy9uWlg8iprrs&refId=3BCyM4GbmRLDj8p8%2BtVfew%3D%3D&trackingId=Wl75W2H7UIcVefE%2BXh%2BNZw%3D%3D".to_string(),
             conversation_id: "e0079e96-6c03-4a98-ab75-98acf2ebc470".to_string(),
             email: "bennekrouf.mohamed@gmail.com".to_string(),
-            api_url: "http://localhost:4002".to_string(),
+            api_url: "http://localhost:50057".to_string(),
         }
     }
 }
@@ -214,6 +214,11 @@ impl ModelComparisonTester {
         for iteration in 1..=self.config.iterations {
             let start_time = Instant::now();
 
+            tracing::info!(
+                "Calling analyze_sentence_enhanced with sentence: '{}'",
+                &self.config.sentence[..50]
+            );
+
             match analyze_sentence_enhanced(
                 &self.config.sentence,
                 provider.clone(),
@@ -224,6 +229,10 @@ impl ModelComparisonTester {
             .await
             {
                 Ok(result) => {
+                    tracing::info!(
+                        "analyze_sentence_enhanced succeeded for iteration {}",
+                        iteration
+                    );
                     let parameters_extracted: HashMap<String, Option<String>> = result
                         .parameters
                         .iter()
@@ -253,6 +262,11 @@ impl ModelComparisonTester {
                     });
                 }
                 Err(e) => {
+                    tracing::error!(
+                        "analyze_sentence_enhanced failed for iteration {}: {}",
+                        iteration,
+                        e
+                    );
                     results.push(TestResult {
                         model: model_name.to_string(),
                         prompt_version: prompt_version.to_string(),
@@ -472,7 +486,6 @@ impl ModelComparisonTester {
                 },
             );
         }
-
         parameter_stats
     }
 
@@ -563,7 +576,6 @@ impl ModelComparisonTester {
             println!("║    ├─ Cohere: {}", self.format_tokens(cohere_summary));
             println!("║    ├─ Claude: {}", self.format_tokens(claude_summary));
             println!("║    └─ DeepSeek: {}", self.format_tokens(deepseek_summary));
-
             println!("╚═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝");
             println!();
         }

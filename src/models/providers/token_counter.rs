@@ -28,16 +28,6 @@ impl TokenCounter {
         Self { model_rates }
     }
 
-    pub fn from_response_enhanced(
-        &self,
-        response_text: &str,
-        input_text: &str,
-        model: &str,
-    ) -> TokenUsage {
-        let calculator = crate::utils::token_calculator::EnhancedTokenCalculator::new();
-        calculator.calculate_usage(input_text, response_text, model)
-    }
-
     pub fn estimate_tokens(&self, text: &str, model: &str) -> u32 {
         let rate = self
             .model_rates

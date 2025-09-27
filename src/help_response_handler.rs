@@ -33,7 +33,7 @@ pub async fn handle_help_request(
     debug!("Generated help prompt: {}", full_prompt);
 
     let models_config = load_models_config().await?;
-    let model_config = &models_config.sentence_to_json; // Reuse existing config
+    let model_config = &models_config.default; // Reuse existing config
 
     let result = provider.generate(&full_prompt, model_config).await?;
 
@@ -68,7 +68,7 @@ Respond with only the two-letter code, nothing else."#,
     );
 
     let models_config = load_models_config().await?;
-    let model_config = &models_config.intent_classification; // Use lightweight config
+    let model_config = &models_config.default; // Use lightweight config
 
     let result = provider
         .generate(&language_detection_prompt, model_config)
@@ -190,4 +190,3 @@ mod tests {
         assert_eq!(result, "No capabilities currently available.");
     }
 }
-

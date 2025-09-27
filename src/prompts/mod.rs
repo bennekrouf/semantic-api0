@@ -32,20 +32,20 @@ impl PromptManager {
         Ok(Self { config })
     }
 
-    // pub fn format_help_response(
-    //     &self,
-    //     sentence: &str,
-    //     endpoints_list: &str,
-    //     version: Option<&str>,
-    // ) -> String {
-    //     let template = self
-    //         .get_prompt("help_response", version)
-    //         .unwrap_or_default();
-    //
-    //     template
-    //         .replace("{sentence}", sentence)
-    //         .replace("{endpoints_list}", endpoints_list)
-    // }
+    pub fn format_extract_followup_parameters_with_mapping(
+        &self,
+        sentence: &str,
+        available_parameters: &str,
+        version: Option<&str>,
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        let template = self
+            .get_prompt("extract_followup_parameters_mapping", version)
+            .ok_or("extract_followup_parameters_mapping prompt not found in prompts.yaml")?;
+
+        Ok(template
+            .replace("{sentence}", sentence)
+            .replace("{available_parameters}", available_parameters))
+    }
 
     pub fn format_help_response_with_language(
         &self,

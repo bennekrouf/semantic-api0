@@ -24,30 +24,12 @@ log_all_messages: false
 
 # Model configurations
 models:
-  sentence_to_json:
+  default:
     cohere: "command-r7b-12-2024"
-    claude: "claude-3-5-sonnet-20241022"
+    claude: "claude-sonnet-4-20250514"
     deepseek: "deepseek-chat"
     temperature: 0.1
     max_tokens: 1000
-  find_endpoint:
-    cohere: "command-r7b-12-2024"
-    claude: "claude-3-5-sonnet-20241022"
-    deepseek: "deepseek-chat"
-    temperature: 0.1
-    max_tokens: 500
-  semantic_match:
-    cohere: "command-r7b-12-2024"
-    claude: "claude-3-5-sonnet-20241022"
-    deepseek: "deepseek-chat"
-    temperature: 0.1
-    max_tokens: 500
-  intent_classification:
-    cohere: "command-r7b-12-2024"
-    claude: "claude-3-5-sonnet-20241022"
-    deepseek: "deepseek-chat"
-    temperature: 0.1
-    max_tokens: 50
 
 # Provider configurations
 providers:

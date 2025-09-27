@@ -24,7 +24,7 @@ pub async fn find_closest_endpoint_pure_llm(
 
     // Load model configuration
     let models_config = load_models_config().await?;
-    let model_config = &models_config.find_endpoint;
+    let model_config = &models_config.default;
 
     // Initialize the PromptManager
     let prompt_manager = PromptManager::new().await?;

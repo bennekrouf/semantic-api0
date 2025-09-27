@@ -46,10 +46,7 @@ pub struct ModelConfig {
 
 #[derive(Debug, Deserialize, Clone, Default)]
 pub struct ModelsConfig {
-    pub sentence_to_json: ModelConfig,
-    pub find_endpoint: ModelConfig,
-    pub semantic_match: ModelConfig,
-    pub intent_classification: ModelConfig,
+    pub default: ModelConfig,
 }
 
 pub fn create_provider(
@@ -87,4 +84,3 @@ impl<T> ProviderWithTokens<T> {
         }
     }
 }
-

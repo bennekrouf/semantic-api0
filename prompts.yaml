@@ -305,3 +305,108 @@ prompts:
           
           Zum Beispiel könnten Sie sagen 'E-Mail an john@example.com über das Meeting senden' oder 'Meeting morgen um 14 Uhr mit dem Team planen'. Was möchten Sie ausprobieren?"
     default_version: "v1"
+
+  extract_followup_parameters:
+    versions:
+      v1:
+        template: |
+          Extract parameter values from this follow-up message: "{sentence}"
+          
+          Look for patterns like:
+          - "subject is Meeting Tomorrow" → {{"subject": "Meeting Tomorrow"}}
+          - "body is Hi John, see you at 2pm" → {{"body": "Hi John, see you at 2pm"}}
+          - "recipient is john@example.com" → {{"to": "john@example.com"}}
+          - "anthony" → {{"person_name": "anthony"}} (when person name is expected)
+          - "the person name is anthony" → {{"person_name": "anthony"}}
+          - "jane" → {{"person_name": "jane"}} (single name responses)
+          
+          IMPORTANT: If the message is a single word or name without context, 
+          and it matches common parameter types, extract it accordingly:
+          - Single names likely represent person_name, name, or recipient
+          - Email addresses likely represent to, email, or recipient_email
+          - Numbers might represent amount, quantity, or id values
+          - Dates/times represent date, time, or schedule parameters
+          
+          Extract natural parameter values from the user's response.
+          Common parameter patterns:
+          - Person identification: person_name, name, user_name, customer_name
+          - Contact info: email, phone, address, to, from
+          - Content: subject, body, message, description, title
+          - Scheduling: date, time, participants, duration, topic, location
+          - Transaction: amount, currency, method, recipient
+          
+          Return JSON object with parameter names as keys and extracted values as values.
+          Only include parameters you can clearly identify from the text.
+          If no clear parameters found, return empty object {{}}.
+          
+          Response must be valid JSON only, no explanatory text.
+      v2:
+        template: |
+          Extract parameter values from this follow-up message: "{sentence}"
+          
+          Look for any identifiable data patterns:
+          - Names or identifiers
+          - Email addresses  
+          - URLs or links
+          - Numbers or amounts
+          - Dates or times
+          - Any other structured data
+          
+          For each piece of data you identify, determine the most likely parameter name:
+          - Person names → "name", "person", "person_name"
+          - Email addresses → "email", "to", "recipient" 
+          - URLs → "url", "link", "job_url"
+          - Numbers → "amount", "quantity", "id"
+          - Dates → "date", "start_date", "end_date"
+          - Times → "time", "start_time", "duration"
+          
+          Return JSON object mapping parameter names to extracted values.
+          Only include clear, identifiable parameter extractions.
+          
+          Response must be valid JSON only, no explanatory text.
+      v3:
+        template: |
+          Given this user message: "{sentence}"
+          
+          Map any values to these EXACT parameter names only:
+          {available_parameters}
+          
+          Instructions:
+          1. Identify any values in the user message
+          2. Map each value to the most appropriate parameter from the list above
+          3. Use ONLY the exact parameter names provided - no variations or synonyms
+          4. If a value doesn't clearly map to any available parameter, omit it
+          
+          Examples:
+          - If you see "anthony" and there's a parameter "person: person identifier", map it as {{"person": "anthony"}}
+          - If you see "john@example.com" and there's a parameter "email: email address", map it as {{"email": "john@example.com"}}
+          
+          Return JSON with exact parameter names as keys and extracted values as values.
+          Only include parameters that clearly match the available list.
+          
+          Response must be valid JSON only, no explanatory text.
+    default_version: "v3"
+extract_followup_parameters_mapping:
+    versions:
+      v1:
+        template: |
+          Given this user message: "{sentence}"
+          
+          Map any values to these EXACT parameter names only:
+          {available_parameters}
+          
+          Instructions:
+          1. Identify any values in the user message
+          2. Map each value to the most appropriate parameter from the list above
+          3. Use ONLY the exact parameter names provided - no variations or synonyms
+          4. If a value doesn't clearly map to any available parameter, omit it
+          
+          Examples:
+          - If you see "anthony" and there's a parameter "person: person identifier", map it as {{"person": "anthony"}}
+          - If you see "john@example.com" and there's a parameter "email: email address", map it as {{"email": "john@example.com"}}
+          
+          Return JSON with exact parameter names as keys and extracted values as values.
+          Only include parameters that clearly match the available list.
+          
+          Response must be valid JSON only, no explanatory text.
+    default_version: "v1"

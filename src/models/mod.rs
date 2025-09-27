@@ -234,7 +234,7 @@ impl MatchingInfo {
         );
 
         // Single pass: process each unique endpoint parameter exactly once
-        let (mut required_results, mut optional_results): (Vec<_>, Vec<_>) = unique_params
+        let (required_results, optional_results): (Vec<_>, Vec<_>) = unique_params
             .values()
             .map(|endpoint_param| {
                 let is_required = endpoint_param.required.unwrap_or(false);
