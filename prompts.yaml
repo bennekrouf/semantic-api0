@@ -386,7 +386,7 @@ prompts:
           
           Response must be valid JSON only, no explanatory text.
     default_version: "v3"
-extract_followup_parameters_mapping:
+  extract_followup_parameters_mapping:
     versions:
       v1:
         template: |

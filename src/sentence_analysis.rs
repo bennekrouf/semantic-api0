@@ -399,7 +399,7 @@ impl SentenceAnalyzer {
     }
 
     // Progressive matching helper functions
-    async fn handle_progressive_followup(
+    pub async fn handle_progressive_followup(
         &self,
         sentence: &str,
         conversation_id: &str,
@@ -834,3 +834,4 @@ fn generate_missing_fields_prompt(missing_params: &[String]) -> String {
         }
     }
 }
+
