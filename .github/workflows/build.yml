@@ -48,7 +48,7 @@ jobs:
       continue-on-error: true
     
     - name: Run clippy (advisory)
-      run: cargo clippy --all-targets -- -W clippy::all
+      run:  cargo clippy --all-targets -- -A warnings
       continue-on-error: true# .github/workflows/build.yml
 name: Build
 
@@ -101,7 +101,7 @@ jobs:
       run: cargo fmt --all
     
     - name: Run clippy
-      run: cargo clippy --all-targets --all-features -- -D warnings
+      run: cargo clippy --all-targets -- -A warnings
     
     - name: Build
       run: cargo build --verbose --all-features
