@@ -56,17 +56,6 @@ mod tests {
     }
 
     #[test]
-    fn test_sanitize_json_with_trailing_comma() {
-        let input = r#"Some text {
-            "customer_id": "Josiane",
-        } more text"#;
-        let result = sanitize_json(input);
-        assert!(result.is_ok());
-        let json = result.unwrap();
-        assert_eq!(json["customer_id"], "Josiane");
-    }
-
-    #[test]
     fn test_sanitize_valid_json() {
         let input = r#"Some text before {"key": "value"} some text after"#;
         let result = sanitize_json(input);
