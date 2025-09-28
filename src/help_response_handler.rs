@@ -144,7 +144,7 @@ fn create_capabilities_list(endpoints: &[EnhancedEndpoint]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::EndpointParameter;
+    
 
     #[test]
     fn test_create_capabilities_list() {
