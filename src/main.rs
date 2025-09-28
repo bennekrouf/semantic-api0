@@ -33,8 +33,7 @@ use tracing_subscriber::{EnvFilter, Registry};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
-    let config_path = std::env::var("CONFIG_PATH").unwrap_or_else(|_| "config.yaml".to_string());
-    let _log_config = load_config(&config_path)?;
+    // let config_path = std::env::var("CONFIG_PATH").unwrap_or_else(|_| "config.yaml".to_string());
 
     let args: Vec<String> = std::env::args().collect();
     if args.len() <= 1 {
@@ -53,7 +52,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
             let error_str = e.to_string();
             if error_str.contains("required arguments were not provided") {
                 eprintln!("ERROR: Required arguments missing!");
-                eprintln!("{}", error_str);
+                eprintln!("{error_str}");
                 eprintln!("\nNOTE: When analyzing a sentence, email is required:");
                 eprintln!("  --email user@example.com");
                 eprintln!("\nExample for starting server (no email needed):");

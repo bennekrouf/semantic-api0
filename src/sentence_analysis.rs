@@ -639,48 +639,6 @@ async fn extract_parameters_from_followup(
     Ok(parameters)
 }
 
-fn extract_generic_parameters(value: &str) -> Vec<ParameterValue> {
-    let mut params = Vec::new();
-
-    // Email pattern
-    if value.contains('@') && value.contains('.') {
-        params.push(ParameterValue {
-            name: "email".to_string(),
-            value: value.to_string(),
-            description: "Extracted email".to_string(),
-        });
-    }
-    // URL pattern
-    else if value.starts_with("http") {
-        params.push(ParameterValue {
-            name: "url".to_string(),
-            value: value.to_string(),
-            description: "Extracted URL".to_string(),
-        });
-    }
-    // Simple name/text pattern
-    else if value
-        .chars()
-        .all(|c| c.is_alphabetic() || c.is_whitespace())
-    {
-        params.push(ParameterValue {
-            name: "name".to_string(),
-            value: value.to_string(),
-            description: "Extracted name/text".to_string(),
-        });
-    }
-    // Number pattern
-    else if value.parse::<f64>().is_ok() {
-        params.push(ParameterValue {
-            name: "amount".to_string(),
-            value: value.to_string(),
-            description: "Extracted number".to_string(),
-        });
-    }
-
-    params
-}
-
 fn build_complete_progressive_response(
     endpoint: &crate::models::EnhancedEndpoint,
     result: crate::progressive_matching::ProgressiveMatchResult,
@@ -800,7 +758,7 @@ fn build_partial_progressive_response(
                 .into_iter()
                 .map(|param| MissingField {
                     name: param.clone(),
-                    description: format!("Missing required parameter: {}", param),
+                    description: format!("Missing required parameter: {param}"),
                 })
                 .collect(),
             missing_optional_fields: vec![],

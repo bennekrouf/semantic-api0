@@ -731,7 +731,7 @@ async fn extract_parameters_from_followup(
                     parameters.push(crate::progressive_matching::ParameterValue {
                         name: key.clone(),
                         value: str_value.trim().to_string(),
-                        description: format!("User provided value for {}", key),
+                        description: format!("User provided value for {key}"),
                     });
                 }
             }
