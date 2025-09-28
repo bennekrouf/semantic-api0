@@ -211,4 +211,3 @@ impl SentenceService for SentenceAnalyzeService {
         }
     }
 }
-

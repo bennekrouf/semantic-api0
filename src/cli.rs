@@ -175,9 +175,7 @@ pub async fn handle_cli(
                 // Validate email
                 if let Err(e) = validate_email(email) {
                     error!("Invalid email: {}", e);
-                    return Err(
-                        format!("Email is required when analyzing a sentence: {e}").into(),
-                    );
+                    return Err(format!("Email is required when analyzing a sentence: {e}").into());
                 }
                 email.clone()
             }

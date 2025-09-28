@@ -102,4 +102,3 @@ pub async fn load_analysis_config() -> Result<AnalysisConfig, Box<dyn Error + Se
 
     Ok(analysis_config)
 }
-

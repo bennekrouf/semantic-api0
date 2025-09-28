@@ -1,17 +1,17 @@
 use crate::endpoint_client::{check_endpoint_service_health, get_enhanced_endpoints};
 use crate::general_question_handler::handle_general_question;
+use crate::help_response_handler::handle_help_request;
 use crate::models::providers::ModelProvider;
 use crate::models::{
-    EnhancedAnalysisResult, MatchingInfo, MatchingStatus, MissingField, ParameterMatch, UsageInfo
+    EnhancedAnalysisResult, MatchingInfo, MatchingStatus, MissingField, ParameterMatch, UsageInfo,
 };
 use crate::utils::email::validate_email;
+use crate::workflow::actions::classify_intent::classify_intent;
 use crate::workflow::classify_intent::IntentType;
 use crate::workflow::find_closest_endpoint::find_closest_endpoint;
 use crate::workflow::match_fields::match_fields_semantic;
 use crate::workflow::sentence_to_json::sentence_to_json;
 use crate::workflow::{WorkflowConfig, WorkflowContext, WorkflowEngine, WorkflowStep};
-use crate::workflow::actions::classify_intent::classify_intent;
-use crate::help_response_handler::handle_help_request;
 
 use crate::progressive_matching::ProgressiveMatchingManager;
 
@@ -403,7 +403,7 @@ steps:
     let user_prompt = matching_info.generate_user_prompt(&enhanced_endpoint.name);
 
     // If workflow didn't track tokens properly, estimate them based on the sentence and response
-     let (final_input_tokens, final_output_tokens) = if context.total_output_tokens == 0 {
+    let (final_input_tokens, final_output_tokens) = if context.total_output_tokens == 0 {
         debug!("Workflow reported 0 output tokens, estimating output tokens");
 
         let enhanced_calculator = crate::utils::token_calculator::EnhancedTokenCalculator::new();
@@ -412,7 +412,11 @@ steps:
         let estimated_input = if context.total_input_tokens > 0 {
             context.total_input_tokens
         } else {
-            let sentence_tokens = enhanced_calculator.estimate_tokens_enhanced(sentence, provider.get_model_name(), None);
+            let sentence_tokens = enhanced_calculator.estimate_tokens_enhanced(
+                sentence,
+                provider.get_model_name(),
+                None,
+            );
             sentence_tokens * 3 // Used in ~3 different LLM calls
         };
 
@@ -435,7 +439,7 @@ steps:
             total_output_content.push_str(desc);
             total_output_content.push(' ');
         }
-        
+
         // Add parameter processing results
         for param in &parameter_matches {
             total_output_content.push_str(&param.name);
@@ -445,18 +449,23 @@ steps:
                 total_output_content.push(' ');
             }
         }
-        
+
         // Add estimated tokens for LLM reasoning/processing overhead
-        let sentence_tokens = enhanced_calculator.estimate_tokens_enhanced(sentence, provider.get_model_name(), None);
+        let sentence_tokens =
+            enhanced_calculator.estimate_tokens_enhanced(sentence, provider.get_model_name(), None);
         let reasoning_overhead = sentence_tokens * 2; // Assume 2x input tokens for reasoning
-        
-        let content_tokens = enhanced_calculator.estimate_tokens_enhanced(&total_output_content, provider.get_model_name(), None);
+
+        let content_tokens = enhanced_calculator.estimate_tokens_enhanced(
+            &total_output_content,
+            provider.get_model_name(),
+            None,
+        );
         let estimated_output = content_tokens + reasoning_overhead;
-        
+
         debug!("Output estimation breakdown: content='{}' ({} tokens), reasoning overhead ({} tokens), total output: {}", 
-               total_output_content.chars().take(100).collect::<String>(), 
+               total_output_content.chars().take(100).collect::<String>(),
                content_tokens, reasoning_overhead, estimated_output);
-               
+
         (estimated_input, estimated_output)
     } else {
         (context.total_input_tokens, context.total_output_tokens)
@@ -527,15 +536,21 @@ pub async fn analyze_sentence_enhanced(
     // STEP 1: PROGRESSIVE MATCHING CHECK (HIGHEST PRIORITY)
     // If we have a conversation_id, check for ongoing requests FIRST
     if let Some(ref conv_id) = conversation_id {
-        info!("Checking for ongoing progressive match for conversation: {}", conv_id);
-        
+        info!(
+            "Checking for ongoing progressive match for conversation: {}",
+            conv_id
+        );
+
         if let Ok(db_url) = crate::progressive_matching::get_database_url() {
             if let Ok(progressive_manager) = ProgressiveMatchingManager::new(&db_url).await {
                 // Check if there's an ongoing incomplete match
                 match progressive_manager.get_incomplete_match(conv_id).await {
                     Ok(Some(ongoing_match)) => {
-                        info!("Found ongoing progressive match for endpoint: {}", ongoing_match.endpoint_id);
-                        
+                        info!(
+                            "Found ongoing progressive match for endpoint: {}",
+                            ongoing_match.endpoint_id
+                        );
+
                         // Process this as a progressive follow-up
                         match handle_progressive_followup(
                             sentence,
@@ -545,22 +560,33 @@ pub async fn analyze_sentence_enhanced(
                             &progressive_manager,
                             api_url_ref,
                             email,
-                        ).await {
+                        )
+                        .await
+                        {
                             Ok(progressive_result) => {
                                 info!("Progressive matching completed successfully");
                                 return Ok(progressive_result);
-                            },
+                            }
                             Err(e) => {
-                                warn!("Progressive matching failed: {}, continuing with normal flow", e);
+                                warn!(
+                                    "Progressive matching failed: {}, continuing with normal flow",
+                                    e
+                                );
                                 // Continue to normal flow if progressive matching fails
                             }
                         }
-                    },
+                    }
                     Ok(None) => {
-                        debug!("No ongoing progressive match found for conversation: {}", conv_id);
-                    },
+                        debug!(
+                            "No ongoing progressive match found for conversation: {}",
+                            conv_id
+                        );
+                    }
                     Err(e) => {
-                        warn!("Error checking for progressive match: {}, continuing with normal flow", e);
+                        warn!(
+                            "Error checking for progressive match: {}, continuing with normal flow",
+                            e
+                        );
                     }
                 }
             }
@@ -595,7 +621,10 @@ pub async fn analyze_sentence_enhanced(
                 Ok(result) => Ok(result),
                 Err(e) => {
                     if analysis_config.fallback_to_general {
-                        warn!("All retries failed, falling back to general question handler: {}", e);
+                        warn!(
+                            "All retries failed, falling back to general question handler: {}",
+                            e
+                        );
                         create_fallback_response(sentence, provider, model, conversation_id).await
                     } else {
                         Err(e)
@@ -626,7 +655,10 @@ async fn handle_progressive_followup(
     api_url: &str,
     email: &str,
 ) -> Result<EnhancedAnalysisResult, Box<dyn Error + Send + Sync>> {
-    info!("Processing progressive follow-up for endpoint: {}", ongoing_match.endpoint_id);
+    info!(
+        "Processing progressive follow-up for endpoint: {}",
+        ongoing_match.endpoint_id
+    );
 
     // Get the endpoint definition to understand its parameters
     let enhanced_endpoints = get_enhanced_endpoints(api_url, email).await?;
@@ -635,16 +667,20 @@ async fn handle_progressive_followup(
         .find(|e| e.id == ongoing_match.endpoint_id)
         .ok_or_else(|| format!("Endpoint {} not found", ongoing_match.endpoint_id))?;
 
-    info!("Found endpoint: {} with {} parameters", endpoint.name, endpoint.parameters.len());
+    info!(
+        "Found endpoint: {} with {} parameters",
+        endpoint.name,
+        endpoint.parameters.len()
+    );
 
     // Extract new parameters from the follow-up message
-    let new_parameters = extract_parameters_from_followup(
-        sentence,
-        provider.clone(),
-        &endpoint.parameters,
-    ).await?;
+    let new_parameters =
+        extract_parameters_from_followup(sentence, provider.clone(), &endpoint.parameters).await?;
 
-    info!("Extracted {} new parameters from follow-up", new_parameters.len());
+    info!(
+        "Extracted {} new parameters from follow-up",
+        new_parameters.len()
+    );
 
     if new_parameters.is_empty() {
         return Err("No parameters could be extracted from the follow-up message".into());
@@ -652,7 +688,11 @@ async fn handle_progressive_followup(
 
     // Update the progressive match with new parameters
     progressive_manager
-        .update_match(conversation_id, &ongoing_match.endpoint_id, new_parameters.clone())
+        .update_match(
+            conversation_id,
+            &ongoing_match.endpoint_id,
+            new_parameters.clone(),
+        )
         .await?;
 
     // Check if we're now complete
@@ -684,10 +724,20 @@ async fn handle_progressive_followup(
             .await?;
 
         info!("Progressive matching completed successfully");
-        create_complete_progressive_response(endpoint, completion_result, &Some(conversation_id.to_string())).await
+        create_complete_progressive_response(
+            endpoint,
+            completion_result,
+            &Some(conversation_id.to_string()),
+        )
+        .await
     } else {
         info!("Progressive matching still incomplete, prompting for more parameters");
-        create_partial_progressive_response(endpoint, completion_result, &Some(conversation_id.to_string())).await
+        create_partial_progressive_response(
+            endpoint,
+            completion_result,
+            &Some(conversation_id.to_string()),
+        )
+        .await
     }
 }
 
@@ -696,7 +746,10 @@ async fn extract_parameters_from_followup(
     sentence: &str,
     provider: Arc<dyn ModelProvider>,
     endpoint_parameters: &[crate::models::EndpointParameter],
-) -> Result<Vec<crate::progressive_matching::ParameterValue>, Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<
+    Vec<crate::progressive_matching::ParameterValue>,
+    Box<dyn std::error::Error + Send + Sync>,
+> {
     info!("Extracting parameters from follow-up: '{}'", sentence);
 
     let prompt_manager = crate::prompts::PromptManager::new().await?;
@@ -839,7 +892,7 @@ async fn create_partial_progressive_response(
     };
 
     let user_prompt = generate_missing_fields_prompt(&result.missing_parameters);
-    
+
     let usage_info = UsageInfo {
         input_tokens: 30,
         output_tokens: 15,
@@ -933,7 +986,8 @@ async fn create_fallback_response(
     Ok(EnhancedAnalysisResult {
         endpoint_id: "general_conversation_fallback".to_string(),
         endpoint_name: "General Conversation (Fallback)".to_string(),
-        endpoint_description: "Fallback conversational response after endpoint matching failed".to_string(),
+        endpoint_description: "Fallback conversational response after endpoint matching failed"
+            .to_string(),
         verb: "GET".to_string(),
         base: "conversation".to_string(),
         path: "/general".to_string(),
@@ -987,7 +1041,8 @@ async fn create_help_response(
     Ok(EnhancedAnalysisResult {
         endpoint_id: "help_capabilities".to_string(),
         endpoint_name: "Help - Available Capabilities".to_string(),
-        endpoint_description: "List of available system capabilities and how to use them".to_string(),
+        endpoint_description: "List of available system capabilities and how to use them"
+            .to_string(),
         verb: "GET".to_string(),
         base: "help".to_string(),
         path: "/capabilities".to_string(),
