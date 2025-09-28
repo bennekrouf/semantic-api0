@@ -22,7 +22,6 @@ use clap::Parser;
 use cli::{display_custom_help, handle_cli, Cli};
 use dotenv::dotenv;
 use endpoint_client::get_default_api_url;
-use grpc_logger::load_config;
 use grpc_server::start_sentence_grpc_server;
 use std::env;
 use std::error::Error;
