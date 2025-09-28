@@ -412,7 +412,7 @@ impl MatchingInfo {
 
     fn format_field_request(field_name: &str, field_description: &str) -> String {
         // Convert snake_case to natural language
-        let natural_name = field_name.replace('_', " ").replace('-', " ");
+        let natural_name = field_name.replace(['_', '-'], " ");
 
         // Use description if it's more descriptive than the field name
         if field_description.len() > natural_name.len() + 5
@@ -422,7 +422,7 @@ impl MatchingInfo {
         {
             field_description.to_lowercase()
         } else {
-            format!("the {}", natural_name)
+            format!("the {natural_name}")
         }
     }
 }

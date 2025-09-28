@@ -12,7 +12,7 @@ pub fn validate_email(email: &str) -> Result<(), Box<dyn Error + Send + Sync>> {
         .expect("Invalid email regex pattern");
 
     if !email_regex.is_match(email) {
-        return Err(format!("Invalid email format: {}", email).into());
+        return Err(format!("Invalid email format: {email}").into());
     }
 
     Ok(())

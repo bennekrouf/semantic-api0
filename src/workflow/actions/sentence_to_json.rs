@@ -33,7 +33,7 @@ pub async fn sentence_to_json(
     let parsed_json = sanitize_json(&result.content)?;
 
     // Validate the JSON structure for v1 format
-    if !parsed_json.is_object() || !parsed_json.get("endpoints").is_some() {
+    if !parsed_json.is_object() || parsed_json.get("endpoints").is_none() {
         error!("Invalid JSON structure: missing 'endpoints' array");
         return Err("Invalid JSON structure: missing 'endpoints' array".into());
     }

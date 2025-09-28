@@ -10,8 +10,7 @@ pub async fn handle_general_question(
 ) -> Result<GenerationResult, Box<dyn Error + Send + Sync>> {
     // Return GenerationResult instead of String
     let prompt = format!(
-        "You are a helpful assistant. Answer this question naturally and conversationally: {}",
-        question
+        "You are a helpful assistant. Answer this question naturally and conversationally: {question}"
     );
 
     let models_config = load_models_config().await?;

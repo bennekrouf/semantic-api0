@@ -62,8 +62,7 @@ impl SentenceAnalyzeService {
         match crate::utils::email::validate_email(&email) {
             Ok(_) => Ok(email),
             Err(e) => Err(tonic::Status::invalid_argument(format!(
-                "Email validation failed: {}",
-                e
+                "Email validation failed: {e}"
             ))),
         }
     }

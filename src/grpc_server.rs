@@ -43,7 +43,7 @@ pub async fn start_sentence_grpc_server(
             error!("Error checking endpoint configuration: {}", e);
             return Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
-                format!("Failed to verify endpoint configuration: {}", e),
+                format!("Failed to verify endpoint configuration: {e}"),
             )));
         }
     }

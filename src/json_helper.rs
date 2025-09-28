@@ -24,7 +24,7 @@ pub fn sanitize_json(raw_text: &str) -> Result<Value, Box<dyn Error + Send + Syn
     // Parse the JSON
     let parsed_json: Value = serde_json::from_str(json_str).map_err(|e| {
         error!("Failed to parse JSON: {}\nRaw JSON string: {}", e, json_str);
-        format!("Failed to parse JSON: {}. Raw JSON: {}", e, json_str)
+        format!("Failed to parse JSON: {e}. Raw JSON: {json_str}")
     })?;
 
     debug!("Successfully parsed JSON");

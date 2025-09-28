@@ -98,7 +98,7 @@ impl ModelProvider for DeepSeekProvider {
                 "DeepSeek request failed with status {}: {}",
                 status, error_text
             );
-            return Err(format!("DeepSeek request failed: {} - {}", status, error_text).into());
+            return Err(format!("DeepSeek request failed: {status} - {error_text}").into());
         }
 
         // Get raw JSON first for token extraction

@@ -81,7 +81,7 @@ impl WorkflowStep for EnhancedConfigurationLoadingStep {
                         );
                     }
                     Err(e) => {
-                        return Err(format!("Failed to fetch enhanced endpoints: {}", e).into());
+                        return Err(format!("Failed to fetch enhanced endpoints: {e}").into());
                     }
                 }
             }
@@ -384,7 +384,7 @@ steps:
         .and_then(|endpoints| {
             endpoints
                 .iter()
-                .find(|e| context.endpoint_id.as_ref().map_or(false, |id| e.id == *id))
+                .find(|e| context.endpoint_id.as_ref().is_some_and(|id| e.id == *id))
         })
         .ok_or("Enhanced endpoint data not found")?;
 
@@ -423,26 +423,26 @@ steps:
         if let Some(json_output) = &context.json_output {
             let json_str = serde_json::to_string(json_output).unwrap_or_default();
             total_output_content.push_str(&json_str);
-            total_output_content.push_str(" ");
+            total_output_content.push(' ');
         }
 
         // Add endpoint matching result (endpoint ID and description)
         if let Some(endpoint_id) = &context.endpoint_id {
             total_output_content.push_str(endpoint_id);
-            total_output_content.push_str(" ");
+            total_output_content.push(' ');
         }
         if let Some(desc) = &context.endpoint_description {
             total_output_content.push_str(desc);
-            total_output_content.push_str(" ");
+            total_output_content.push(' ');
         }
         
         // Add parameter processing results
         for param in &parameter_matches {
             total_output_content.push_str(&param.name);
-            total_output_content.push_str(" ");
+            total_output_content.push(' ');
             if let Some(value) = &param.value {
                 total_output_content.push_str(value);
-                total_output_content.push_str(" ");
+                total_output_content.push(' ');
             }
         }
         
@@ -823,7 +823,7 @@ async fn create_partial_progressive_response(
         .iter()
         .map(|param| MissingField {
             name: param.clone(),
-            description: format!("Missing required parameter: {}", param),
+            description: format!("Missing required parameter: {param}"),
         })
         .collect();
 

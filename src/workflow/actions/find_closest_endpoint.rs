@@ -31,7 +31,7 @@ pub async fn find_closest_endpoint_pure_llm(
 
     // Create structured endpoints list for the prompt
     let mut endpoints_list = String::new();
-    for (_index, endpoint) in enhanced_endpoints.iter().enumerate() {
+    for endpoint in enhanced_endpoints.iter() {
         endpoints_list.push_str(&format!(
             "- {} ({})\n", // Remove numbering, use bullet points
             endpoint.id, endpoint.description

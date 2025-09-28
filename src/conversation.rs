@@ -96,7 +96,7 @@ impl ConversationManager {
                 metadata.last_activity = now;
                 metadata.message_count += 1;
             } else {
-                return Err(format!("Conversation {} not found", conversation_id).into());
+                return Err(format!("Conversation {conversation_id} not found").into());
             }
         }
 
@@ -106,7 +106,7 @@ impl ConversationManager {
             if let Some(conversation_messages) = messages.get_mut(conversation_id) {
                 conversation_messages.push(message);
             } else {
-                return Err(format!("Conversation {} not found", conversation_id).into());
+                return Err(format!("Conversation {conversation_id} not found").into());
             }
         }
 

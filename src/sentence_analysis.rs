@@ -65,7 +65,7 @@ impl SentenceAnalyzer {
                     &conversation_id,
                     provider_clone.clone(),
                     manager,
-                    &api_url_clone.as_ref().unwrap_or(&"".to_string()),
+                    api_url_clone.as_ref().unwrap_or(&"".to_string()),
                     &email,
                 )
                 .await
@@ -193,8 +193,7 @@ impl SentenceAnalyzer {
 
         let status = if error.to_string().contains("No endpoints found for user") {
             Status::not_found(format!(
-                "No endpoints configured for your account ({}). Please contact your administrator.",
-                email
+                "No endpoints configured for your account ({email}). Please contact your administrator."
             ))
         } else if error
             .to_string()
@@ -202,7 +201,7 @@ impl SentenceAnalyzer {
         {
             Status::failed_precondition("Endpoint configuration is not available.")
         } else {
-            Status::internal(format!("Analysis failed: {}", error))
+            Status::internal(format!("Analysis failed: {error}"))
         };
 
         if tx.send(Err(status)).await.is_err() {
@@ -362,7 +361,7 @@ impl SentenceAnalyzer {
                 Ok(json) => json,
                 Err(e) => {
                     tracing::error!(error = %e, "JSON serialization failed");
-                    format!("{{\"error\": \"JSON serialization failed: {}\"}}", e)
+                    format!("{{\"error\": \"JSON serialization failed: {e}\"}}")
                 }
             },
             matching_info: Some(MatchingInfo {
@@ -622,7 +621,7 @@ async fn extract_parameters_from_followup(
                         parameters.push(ParameterValue {
                             name: key.clone(),
                             value: str_value.trim().to_string(),
-                            description: format!("User provided value for {}", key),
+                            description: format!("User provided value for {key}"),
                         });
                     } else {
                         tracing::warn!(

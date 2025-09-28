@@ -46,7 +46,7 @@ async fn detect_language_with_llm(
     provider: Arc<dyn ModelProvider>,
 ) -> Result<String, Box<dyn Error + Send + Sync>> {
     let language_detection_prompt = format!(
-        r#"Detect the language of this user input: "{}"
+        r#"Detect the language of this user input: "{sentence}"
 
 Respond with ONLY the two-letter language code:
 - en (English)
@@ -63,8 +63,7 @@ Respond with ONLY the two-letter language code:
 - ar (Arabic)
 
 If the language is not in this list or unclear, respond with "en".
-Respond with only the two-letter code, nothing else."#,
-        sentence
+Respond with only the two-letter code, nothing else."#
     );
 
     let models_config = load_models_config().await?;

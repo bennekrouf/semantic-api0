@@ -303,7 +303,7 @@ impl ModelComparisonTester {
             "cohere" => env::var("COHERE_API_KEY")?,
             "claude" => env::var("CLAUDE_API_KEY")?,
             "deepseek" => env::var("DEEPSEEK_API_KEY")?,
-            _ => return Err(format!("Unknown model: {}", model_name).into()),
+            _ => return Err(format!("Unknown model: {model_name}").into()),
         };
 
         let config = ProviderConfig {
@@ -312,7 +312,7 @@ impl ModelComparisonTester {
         };
 
         let provider = create_provider(&config, model_name)
-            .ok_or_else(|| format!("Failed to create provider for {}", model_name))?;
+            .ok_or_else(|| format!("Failed to create provider for {model_name}"))?;
 
         Ok(Arc::from(provider))
     }
@@ -541,7 +541,7 @@ impl ModelComparisonTester {
             println!("║ PARAMETER EXTRACTION VALUES");
             let all_params = self.get_all_parameters(version_summaries);
             for param in all_params {
-                println!("║ ├─ {}:", param);
+                println!("║ ├─ {param}:");
                 println!(
                     "║ │  ├─ Cohere: {}",
                     self.format_param_values(cohere_summary, &param)

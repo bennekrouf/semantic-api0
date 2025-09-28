@@ -78,7 +78,7 @@ pub async fn verify_endpoints_configuration(
                 info!("Remote endpoint service is available at {}", url);
                 Ok(true)
             }
-            _ => Err(format!("Endpoint service is not available at {}", url).into()),
+            _ => Err(format!("Endpoint service is not available at {url}").into()),
         }
     } else {
         Err("No remote endpoint service URL provided".into())
@@ -139,8 +139,7 @@ pub async fn get_default_endpoints(
         error!("  3. The endpoint service has no data available");
 
         return Err(format!(
-            "No endpoints available for user '{}'. Please verify your email address or contact your administrator.",
-            email
+            "No endpoints available for user '{email}'. Please verify your email address or contact your administrator."
         ).into());
     }
 
@@ -223,7 +222,7 @@ pub async fn get_enhanced_endpoints(
     let enhanced_endpoints = convert_remote_endpoints_enhanced(api_groups);
 
     if enhanced_endpoints.is_empty() {
-        return Err(format!("No endpoints available for user '{}'", email).into());
+        return Err(format!("No endpoints available for user '{email}'").into());
     }
 
     Ok(enhanced_endpoints)

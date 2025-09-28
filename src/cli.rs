@@ -159,7 +159,7 @@ pub async fn handle_cli(
                 }
                 Err(e) => {
                     return Err(
-                        format!("No API URL provided and failed to get default: {}", e).into(),
+                        format!("No API URL provided and failed to get default: {e}").into(),
                     );
                 }
             }
@@ -176,7 +176,7 @@ pub async fn handle_cli(
                 if let Err(e) = validate_email(email) {
                     error!("Invalid email: {}", e);
                     return Err(
-                        format!("Email is required when analyzing a sentence: {}", e).into(),
+                        format!("Email is required when analyzing a sentence: {e}").into(),
                     );
                 }
                 email.clone()
@@ -209,7 +209,7 @@ pub async fn handle_cli(
         }
 
         let endpoint_source = match &cli.api {
-            Some(api_url) => format!("remote API ({})", api_url),
+            Some(api_url) => format!("remote API ({api_url})"),
             None => "local file".to_string(),
         };
 
@@ -248,7 +248,7 @@ pub async fn handle_cli(
             IntentType::HelpRequest | IntentType::GeneralQuestion => {
                 if let Some(response) = result.raw_json.get("response").and_then(|v| v.as_str()) {
                     println!("\nResponse:");
-                    println!("{}", response);
+                    println!("{response}");
                 }
             }
             IntentType::ActionableRequest => {
@@ -256,7 +256,7 @@ pub async fn handle_cli(
                 for param in result.parameters {
                     println!("\n{} ({}):", param.name, param.description);
                     if let Some(semantic) = param.value {
-                        println!("  Semantic Match: {}", semantic);
+                        println!("  Semantic Match: {semantic}");
                     }
                 }
 
@@ -291,7 +291,7 @@ pub async fn list_endpoints_for_email(
     // Validate email
     if let Err(e) = validate_email(email) {
         error!("Invalid email: {}", e);
-        return Err(format!("Invalid email format: {}", e).into());
+        return Err(format!("Invalid email format: {e}").into());
     }
 
     // Determine API URL
@@ -303,7 +303,7 @@ pub async fn list_endpoints_for_email(
                 url
             }
             Err(e) => {
-                return Err(format!("No API URL provided and failed to get default: {}", e).into());
+                return Err(format!("No API URL provided and failed to get default: {e}").into());
             }
         },
     };
@@ -319,14 +319,14 @@ pub async fn list_endpoints_for_email(
             return Err("❌ Endpoint service is not responding".into());
         }
         Err(e) => {
-            return Err(format!("❌ Failed to connect to endpoint service: {}", e).into());
+            return Err(format!("❌ Failed to connect to endpoint service: {e}").into());
         }
     }
 
     // Fetch endpoints
     match get_default_endpoints(&final_api_url, email).await {
         Ok(endpoints) => {
-            println!("\n📋 Available Endpoints for '{}':", email);
+            println!("\n📋 Available Endpoints for '{email}':");
             println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
             if endpoints.is_empty() {
@@ -369,7 +369,7 @@ pub async fn list_endpoints_for_email(
             println!("📊 Total: {} endpoints found", endpoints.len());
         }
         Err(e) => {
-            return Err(format!("Failed to fetch endpoints: {}", e).into());
+            return Err(format!("Failed to fetch endpoints: {e}").into());
         }
     }
 

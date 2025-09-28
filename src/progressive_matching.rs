@@ -319,7 +319,7 @@ impl ProgressiveMatchingManager {
         Ok(ProgressiveMatchResult {
             conversation_id: conversation_id.to_string(),
             endpoint_id: endpoint_id.to_string(),
-            endpoint_description: format!("Endpoint {}", endpoint_id),
+            endpoint_description: format!("Endpoint {endpoint_id}"),
             matched_parameters,
             missing_parameters,
             is_complete,
@@ -423,7 +423,7 @@ pub fn get_database_url() -> Result<String, Box<dyn Error + Send + Sync>> {
             Ok(_) => println!("Successfully created directory: {}", db_dir.display()),
             Err(e) => {
                 println!("Failed to create directory {}: {}", db_dir.display(), e);
-                return Err(format!("Cannot create database directory: {}", e).into());
+                return Err(format!("Cannot create database directory: {e}").into());
             }
         }
     }
@@ -439,7 +439,7 @@ pub fn get_database_url() -> Result<String, Box<dyn Error + Send + Sync>> {
         Ok(_) => println!("Successfully tested database file access"),
         Err(e) => {
             println!("Cannot access database file {}: {}", db_file.display(), e);
-            return Err(format!("Cannot access database file: {}", e).into());
+            return Err(format!("Cannot access database file: {e}").into());
         }
     }
 

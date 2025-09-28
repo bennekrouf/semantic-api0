@@ -99,7 +99,7 @@ impl ModelProvider for CohereProvider {
                 "Cohere request failed with status {}: {}",
                 status, error_text
             );
-            return Err(format!("Cohere request failed: {} - {}", status, error_text).into());
+            return Err(format!("Cohere request failed: {status} - {error_text}").into());
         }
 
         // Get raw JSON first for token extraction
