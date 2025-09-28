@@ -13,9 +13,7 @@ pub struct MissingField {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct OllamaResponse {
-    //pub response: String,
-}
+pub struct OllamaResponse {}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Endpoint {
@@ -123,50 +121,6 @@ pub struct MatchingInfo {
     pub completion_percentage: f32,
     pub missing_required_fields: Vec<MissingField>,
     pub missing_optional_fields: Vec<MissingField>,
-}
-
-pub fn debug_parameter_matches(
-    parameter_matches: &[ParameterMatch],
-    endpoint_params: &[EndpointParameter],
-) {
-    use tracing::{debug, warn};
-
-    debug!("=== DEBUGGING PARAMETER CONSTRUCTION ===");
-
-    debug!(
-        "ParameterMatch objects ({} total):",
-        parameter_matches.len()
-    );
-    for (i, param) in parameter_matches.iter().enumerate() {
-        debug!("  [{}] name: '{}', value: {:?}", i, param.name, param.value);
-    }
-
-    debug!(
-        "EndpointParameter objects ({} total):",
-        endpoint_params.len()
-    );
-    let mut param_counts = std::collections::HashMap::new();
-    for (i, param) in endpoint_params.iter().enumerate() {
-        debug!(
-            "  [{}] name: '{}', required: {:?}, desc: '{}'",
-            i, param.name, param.required, param.description
-        );
-
-        // Count duplicates
-        *param_counts.entry(param.name.clone()).or_insert(0) += 1;
-    }
-
-    // Check for duplicates in endpoint params
-    for (name, count) in param_counts {
-        if count > 1 {
-            warn!(
-                "DUPLICATE EndpointParameter: '{}' appears {} times",
-                name, count
-            );
-        }
-    }
-
-    debug!("=== END DEBUGGING ===");
 }
 
 impl MatchingInfo {

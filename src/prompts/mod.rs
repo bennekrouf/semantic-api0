@@ -47,6 +47,14 @@ impl PromptManager {
             .replace("{available_parameters}", available_parameters))
     }
 
+    pub fn language_detection(&self, sentence: &str, version: Option<&str>) -> String {
+        let template = self
+            .get_prompt("language_detection", version)
+            .unwrap_or_default();
+
+        template.replace("{sentence}", sentence)
+    }
+
     pub fn format_help_response_with_language(
         &self,
         sentence: &str,

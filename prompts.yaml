@@ -304,7 +304,73 @@ prompts:
           • Berichte und Dokumente generieren
           
           Zum Beispiel könnten Sie sagen 'E-Mail an john@example.com über das Meeting senden' oder 'Meeting morgen um 14 Uhr mit dem Team planen'. Was möchten Sie ausprobieren?"
-    default_version: "v1"
+      v2:
+        template: |
+          The user asked for help: "{sentence}"
+          Detected language: {detected_language}
+          
+          Available capabilities for this user:
+          {endpoints_list}
+          
+          CRITICAL INSTRUCTIONS:
+          1. Acknowledge their help request warmly in the detected language
+          2. Present the EXACT endpoint information from {endpoints_list} WITHOUT modification
+          3. DO NOT summarize, rephrase, or change any endpoint descriptions
+          4. DO NOT group or categorize endpoints differently than provided
+          5. Keep the original bullet points and structure exactly as given
+          6. Add minimal language-appropriate greeting/closing only
+          7. Ensure users can copy-paste any description and have it work in analysis
+          
+          Language-specific response format:
+          
+          English (en):
+          "I can help you with these available actions:
+          
+          {endpoints_list}
+          
+          You can copy any of these descriptions to try them out!"
+          
+          French (fr):
+          "Je peux vous aider avec ces actions disponibles:
+          
+          {endpoints_list}
+          
+          Vous pouvez copier n'importe laquelle de ces descriptions pour les essayer!"
+          
+          Spanish (es):
+          "Puedo ayudarle con estas acciones disponibles:
+          
+          {endpoints_list}
+          
+          ¡Puede copiar cualquiera de estas descripciones para probarlas!"
+          
+          German (de):
+          "Ich kann Ihnen mit diesen verfügbaren Aktionen helfen:
+          
+          {endpoints_list}
+          
+          Sie können jede dieser Beschreibungen kopieren, um sie auszuprobieren!"
+          
+          PRESERVE the exact {endpoints_list} content in your response.
+      v3:
+        template: |
+          Translate ONLY the wrapper text to {detected_language}, keep the endpoints list EXACTLY as provided.
+
+          User asked: "{sentence}"
+          Detected language: {detected_language}
+
+          Endpoints list (DO NOT TRANSLATE OR MODIFY):
+          {endpoints_list}
+
+          Translate this template to {detected_language}, keeping the endpoints list UNCHANGED:
+          "Here are the available actions:
+
+          [INSERT EXACT ENDPOINTS LIST HERE]
+
+          You can copy any of these descriptions to try them out."
+
+          CRITICAL: Insert the endpoints list exactly as provided above, with no modifications whatsoever.
+    default_version: "v3"
 
   extract_followup_parameters:
     versions:
@@ -409,4 +475,27 @@ prompts:
           Only include parameters that clearly match the available list.
           
           Response must be valid JSON only, no explanatory text.
+    default_version: "v1"
+  language_detection:
+    versions:
+      v1:
+        template: |
+          Detect the language of this user input: "{sentence}"
+
+          Respond with ONLY the two-letter language code:
+          - en (English)
+          - fr (French) 
+          - es (Spanish)
+          - de (German)
+          - it (Italian)
+          - pt (Portuguese)
+          - nl (Dutch)
+          - ru (Russian)
+          - ja (Japanese)
+          - zh (Chinese)
+          - ko (Korean)
+          - ar (Arabic)
+
+          If the language is not in this list or unclear, respond with "en".
+          Respond with only the two-letter code, nothing else.
     default_version: "v1"

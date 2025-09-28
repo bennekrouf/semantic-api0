@@ -1,4 +1,4 @@
-// src/help_response_handler.rs
+// src/help_response_handler.rs - Using prompts.yaml with minimal transformation
 use crate::models::config::load_models_config;
 use crate::models::providers::{GenerationResult, ModelProvider};
 use crate::models::EnhancedEndpoint;
@@ -18,22 +18,43 @@ pub async fn handle_help_request(
     let detected_language = detect_language_with_llm(sentence, provider.clone()).await?;
     debug!("Detected language: {}", detected_language);
 
-    // Create a human-readable list of capabilities from endpoints
-    let endpoints_list = create_capabilities_list(available_endpoints);
-    debug!("Generated capabilities list: {}", endpoints_list);
+    // Create the exact endpoints list
+    let endpoints_list = create_exact_endpoints_list(available_endpoints);
+    debug!(
+        "Generated exact endpoints list with {} endpoints",
+        available_endpoints.len()
+    );
 
+    // If English, return direct response without LLM transformation
+    if detected_language == "en" {
+        let direct_response = format!(
+            "Here are the available actions:\n\n{}\n\nYou can copy any of these descriptions to try them out.",
+            endpoints_list
+        );
+
+        // Estimate token usage for the direct response
+        let enhanced_calculator = crate::utils::token_calculator::EnhancedTokenCalculator::new();
+        let usage = enhanced_calculator.calculate_usage(sentence, &direct_response, "direct");
+
+        return Ok(GenerationResult {
+            content: direct_response,
+            usage,
+        });
+    }
+
+    // For non-English, use the prompt from prompts.yaml
     let prompt_manager = PromptManager::new().await?;
     let full_prompt = prompt_manager.format_help_response_with_language(
         sentence,
         &endpoints_list,
         &detected_language,
-        Some("v1"),
+        Some("v3"), // Use v3 for minimal transformation
     );
 
-    debug!("Generated help prompt: {}", full_prompt);
+    debug!("Generated help prompt using prompts.yaml");
 
     let models_config = load_models_config().await?;
-    let model_config = &models_config.default; // Reuse existing config
+    let model_config = &models_config.default;
 
     let result = provider.generate(&full_prompt, model_config).await?;
 
@@ -45,29 +66,11 @@ async fn detect_language_with_llm(
     sentence: &str,
     provider: Arc<dyn ModelProvider>,
 ) -> Result<String, Box<dyn Error + Send + Sync>> {
-    let language_detection_prompt = format!(
-        r#"Detect the language of this user input: "{sentence}"
-
-Respond with ONLY the two-letter language code:
-- en (English)
-- fr (French) 
-- es (Spanish)
-- de (German)
-- it (Italian)
-- pt (Portuguese)
-- nl (Dutch)
-- ru (Russian)
-- ja (Japanese)
-- zh (Chinese)
-- ko (Korean)
-- ar (Arabic)
-
-If the language is not in this list or unclear, respond with "en".
-Respond with only the two-letter code, nothing else."#
-    );
+    let prompt_manager = PromptManager::new().await?;
+    let language_detection_prompt = prompt_manager.language_detection(sentence, Some("v1"));
 
     let models_config = load_models_config().await?;
-    let model_config = &models_config.default; // Use lightweight config
+    let model_config = &models_config.default;
 
     let result = provider
         .generate(&language_detection_prompt, model_config)
@@ -91,52 +94,25 @@ Respond with only the two-letter code, nothing else."#
     }
 }
 
-fn create_capabilities_list(endpoints: &[EnhancedEndpoint]) -> String {
+fn create_exact_endpoints_list(endpoints: &[EnhancedEndpoint]) -> String {
     if endpoints.is_empty() {
         return "No capabilities currently available.".to_string();
     }
 
     let mut capabilities: Vec<String> = Vec::new();
 
-    // Group endpoints by category or use individual descriptions
+    // Output EXACT endpoint information without any modification
     for endpoint in endpoints {
-        let capability = match endpoint.id.as_str() {
-            id if id.contains("email") => format!("• Send emails ({})", endpoint.description),
-            id if id.contains("meeting") || id.contains("schedule") => {
-                format!(
-                    "• Schedule meetings and appointments ({})",
-                    endpoint.description
-                )
-            }
-            id if id.contains("ticket") || id.contains("support") => {
-                format!("• Create support tickets ({})", endpoint.description)
-            }
-            id if id.contains("report") || id.contains("generate") => {
-                format!(
-                    "• Generate reports and documents ({})",
-                    endpoint.description
-                )
-            }
-            id if id.contains("deploy") => {
-                format!("• Deploy applications ({})", endpoint.description)
-            }
-            id if id.contains("payment") || id.contains("pay") => {
-                format!("• Process payments ({})", endpoint.description)
-            }
-            id if id.contains("backup") => {
-                format!("• Backup databases ({})", endpoint.description)
-            }
-            id if id.contains("log") => {
-                format!("• Analyze application logs ({})", endpoint.description)
-            }
-            _ => format!("• {} ({})", endpoint.name, endpoint.description),
-        };
-        capabilities.push(capability); // This line was missing!
+        let mut endpoint_info = format!("• {}", endpoint.description);
+
+        // Add example from endpoint.text if it differs meaningfully from description
+        if !endpoint.text.is_empty() && endpoint.text != endpoint.description {
+            endpoint_info.push_str(&format!("\n  Example: \"{}\"", endpoint.text));
+        }
+
+        capabilities.push(endpoint_info);
     }
 
-    // Remove duplicates and sort
-    capabilities.sort();
-    capabilities.dedup();
-
-    capabilities.join("\n")
+    capabilities.join("\n\n")
 }
+

@@ -668,53 +668,6 @@ impl ModelComparisonTester {
         param_vec.sort();
         param_vec
     }
-
-    fn print_comparison_analysis(&self, summaries: &[ComparisonSummary]) {
-        println!("=== COMPARISON ANALYSIS ===");
-
-        // Find most consistent endpoint matcher
-        let most_consistent_endpoint = summaries.iter().max_by(|a, b| {
-            a.endpoint_consistency
-                .consistency_rate
-                .partial_cmp(&b.endpoint_consistency.consistency_rate)
-                .unwrap()
-        });
-
-        if let Some(best) = most_consistent_endpoint {
-            println!(
-                "Most Consistent Endpoint Matching: {} {} ({:.1}%)",
-                best.model, best.prompt_version, best.endpoint_consistency.consistency_rate
-            );
-        }
-
-        // Find best parameter extractor
-        let best_param_extractor = summaries.iter().max_by(|a, b| {
-            a.avg_completion_percentage
-                .partial_cmp(&b.avg_completion_percentage)
-                .unwrap()
-        });
-
-        if let Some(best) = best_param_extractor {
-            println!(
-                "Best Parameter Extraction: {} {} ({:.1}% avg completion)",
-                best.model, best.prompt_version, best.avg_completion_percentage
-            );
-        }
-
-        // Find fastest
-        let fastest = summaries.iter().min_by(|a, b| {
-            a.avg_response_time_ms
-                .partial_cmp(&b.avg_response_time_ms)
-                .unwrap()
-        });
-
-        if let Some(fast) = fastest {
-            println!(
-                "Fastest Response: {} {} ({:.0}ms avg)",
-                fast.model, fast.prompt_version, fast.avg_response_time_ms
-            );
-        }
-    }
 }
 
 // CLI command to run the comparison
