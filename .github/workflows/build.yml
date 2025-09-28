@@ -38,11 +38,8 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-cargo-build-
     
-    - name: Install protoc
-      uses: arduino/setup-protoc@v3
-      with:
-        version: "25.x"
-        repo-token: ${{ secrets.GITHUB_TOKEN }}
+    - name: Install protobuf compiler
+      run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
     
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@stable
