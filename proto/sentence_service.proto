@@ -30,6 +30,14 @@ message Usage {
   uint32 total_tokens = 3;
   string model = 4;
   bool estimated = 5;
+  
+  // NEW: Actual API call information (what the gateway needs)
+  string endpoint_path = 6;      // e.g., "/api/analyze"
+  string method = 7;              // e.g., "POST"
+  
+  // Optional: matched endpoint for analytics only
+  optional string matched_endpoint_id = 8;
+  optional string user_sentence = 9;
 }
 
 message SentenceResponse {

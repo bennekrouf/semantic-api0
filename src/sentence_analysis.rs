@@ -324,9 +324,12 @@ impl SentenceAnalyzer {
             estimated: enhanced_result.usage.estimated,
         };
 
+        // Clone endpoint_id once for reuse
+        let endpoint_id = enhanced_result.endpoint_id.clone();
+
         SentenceResponse {
             conversation_id: Some(conversation_id),
-            endpoint_id: enhanced_result.endpoint_id,
+            endpoint_id: endpoint_id.clone(), // Use the clone
             endpoint_name: Some(enhanced_result.endpoint_name),
             endpoint_description: enhanced_result.endpoint_description,
             verb: Some(enhanced_result.verb),
@@ -342,6 +345,10 @@ impl SentenceAnalyzer {
                 total_tokens: usage_info.total_tokens,
                 model: usage_info.model,
                 estimated: usage_info.estimated,
+                endpoint_path: "/api/analyze".to_string(),
+                method: "POST".to_string(),
+                matched_endpoint_id: Some(endpoint_id), // Use the clone
+                user_sentence: None,
             }),
             intent: match enhanced_result.intent {
                 IntentType::ActionableRequest => ProtoIntentType::ActionableRequest as i32,
@@ -655,13 +662,17 @@ fn build_complete_progressive_response(
         essential_path: Some(endpoint.essential_path.clone()),
         api_group_id: Some(endpoint.api_group_id.clone()),
         api_group_name: Some(endpoint.api_group_name.clone()),
-        user_prompt: None, // Complete, so no more prompting needed
+        user_prompt: None,
         usage: Some(Usage {
-            input_tokens: 50, // Estimated for progressive matching
+            input_tokens: 50,
             output_tokens: 20,
             total_tokens: 70,
             model: "progressive_matching".to_string(),
             estimated: true,
+            endpoint_path: "/api/analyze".to_string(),
+            method: "POST".to_string(),
+            matched_endpoint_id: Some(endpoint.id.clone()),
+            user_sentence: None,
         }),
         intent: ProtoIntentType::ActionableRequest as i32,
         parameters: result
@@ -727,6 +738,10 @@ fn build_partial_progressive_response(
             total_tokens: 45,
             model: "progressive_matching".to_string(),
             estimated: true,
+            endpoint_path: "/api/analyze".to_string(),
+            method: "POST".to_string(),
+            matched_endpoint_id: Some(endpoint.id.clone()),
+            user_sentence: None,
         }),
         intent: ProtoIntentType::ActionableRequest as i32,
         parameters: result
