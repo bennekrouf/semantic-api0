@@ -10,8 +10,6 @@ serde = { version = "1.0.217", features = ["derive"] }
 serde_json = "1.0.138"
 serde_yaml = "0.9.34"
 tokio = { version = "1.43.0", features = ["full"] }
-tracing = "0.1.41"
-tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 tonic = { version = "0.12.3", features = ["gzip", "tls"] }
 tonic-reflection = "0.12.3"
 tonic-web = "0.12.3"
@@ -31,6 +29,9 @@ chrono = { version = "0.4.42", features = ["serde"] }
 thiserror = "2.0.16"
 tokio-postgres = { version = "0.7.14", features = ["with-chrono-0_4"] }
 deadpool-postgres = { version = "0.14.1", features = ["serde"] }
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+
 
 [build-dependencies]
 tonic-build = "0.12.3"
