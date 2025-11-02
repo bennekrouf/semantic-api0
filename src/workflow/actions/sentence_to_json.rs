@@ -4,7 +4,7 @@ use crate::models::providers::ModelProvider;
 use crate::models::EnhancedEndpoint;
 use crate::prompts::PromptManager;
 use std::{error::Error, sync::Arc};
-use tracing::{debug, error, info};
+use crate::app_log;
 
 pub async fn sentence_to_json(
     sentence: &str,
@@ -19,7 +19,7 @@ pub async fn sentence_to_json(
     let result = provider.generate(&full_prompt, model_config).await?;
 
     // Log token usage
-    debug!(
+    app_log!(debug, 
         provider = provider.get_model_name(),
         estimated = result.usage.estimated,
         input_tokens = result.usage.input_tokens,
@@ -28,13 +28,13 @@ pub async fn sentence_to_json(
         "sentence_to_json LLM request completed"
     );
 
-    debug!("Raw LLM response:\n{}", result.content);
+    app_log!(debug, "Raw LLM response:\n{}", result.content);
 
     let parsed_json = sanitize_json(&result.content)?;
 
     // Validate the JSON structure for v1 format
     if !parsed_json.is_object() || parsed_json.get("endpoints").is_none() {
-        error!("Invalid JSON structure: missing 'endpoints' array");
+        app_log!(error, "Invalid JSON structure: missing 'endpoints' array");
         return Err("Invalid JSON structure: missing 'endpoints' array".into());
     }
 
@@ -42,16 +42,16 @@ pub async fn sentence_to_json(
         .get("endpoints")
         .and_then(|e| e.as_array())
         .ok_or_else(|| {
-            error!("Invalid JSON structure: 'endpoints' is not an array");
+            app_log!(error, "Invalid JSON structure: 'endpoints' is not an array");
             "Invalid JSON structure: 'endpoints' is not an array"
         })?;
 
     if endpoints.is_empty() {
-        error!("Invalid JSON structure: 'endpoints' array is empty");
+        app_log!(error, "Invalid JSON structure: 'endpoints' array is empty");
         return Err("Invalid JSON structure: 'endpoints' array is empty".into());
     }
 
-    info!("Successfully generated and validated JSON");
+    app_log!(info, "Successfully generated and validated JSON");
     Ok(parsed_json)
 }
 
@@ -61,7 +61,7 @@ pub async fn sentence_to_json_structured(
     endpoint: &EnhancedEndpoint,
     provider: Arc<dyn ModelProvider>,
 ) -> Result<serde_json::Value, Box<dyn Error + Send + Sync>> {
-    info!(
+    app_log!(info, 
         "Starting structured parameter extraction for endpoint: {}",
         endpoint.id
     );
@@ -104,25 +104,25 @@ pub async fn sentence_to_json_structured(
         Some("v2"),
     );
 
-    debug!("Generated structured prompt:\n{}", full_prompt);
+    app_log!(debug, "Generated structured prompt:\n{}", full_prompt);
 
     // Load model configuration
     let models_config = load_models_config().await?;
     let model_config = &models_config.default;
 
     let result = provider.generate(&full_prompt, model_config).await?;
-    debug!(
+    app_log!(debug, 
         "Raw LLM response for structured extraction:\n{:?}",
         result.content
     );
 
     // Parse the JSON response
     let parsed_json = sanitize_json(&result.content)?;
-    debug!("Parsed JSON: {:?}", parsed_json);
+    app_log!(debug, "Parsed JSON: {:?}", parsed_json);
 
     // Validate that we got an object (not the old endpoints array format)
     if !parsed_json.is_object() {
-        error!("Invalid JSON structure: expected object with parameter values");
+        app_log!(error, "Invalid JSON structure: expected object with parameter values");
         return Err("Invalid JSON structure: expected object with parameter values".into());
     }
 
@@ -136,7 +136,7 @@ pub async fn sentence_to_json_structured(
 
         for key in obj.keys() {
             if !known_param_names.contains(&key.as_str()) {
-                debug!(
+                app_log!(debug, 
                     "Warning: LLM returned unknown parameter '{}', ignoring",
                     key
                 );
@@ -152,13 +152,13 @@ pub async fn sentence_to_json_structured(
         }
 
         let filtered_json = serde_json::Value::Object(filtered_obj.clone());
-        info!(
+        app_log!(info, 
             "Successfully extracted and validated {} parameters",
             filtered_obj.len()
         );
         return Ok(filtered_json);
     }
 
-    info!("Successfully completed structured parameter extraction");
+    app_log!(info, "Successfully completed structured parameter extraction");
     Ok(parsed_json)
 }

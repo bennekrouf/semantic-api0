@@ -6,7 +6,7 @@ use crate::models::Endpoint;
 use crate::prompts::PromptManager;
 use serde_json::Value;
 use std::error::Error;
-use tracing::debug;
+use crate::app_log;
 
 use crate::models::providers::ModelProvider;
 use std::sync::Arc;
@@ -16,9 +16,9 @@ pub async fn match_fields_semantic(
     endpoint: &Endpoint,
     provider: Arc<dyn ModelProvider>,
 ) -> Result<Vec<(String, String, Option<String>)>, Box<dyn Error + Send + Sync>> {
-    debug!("Starting generic semantic field matching");
-    debug!("Input JSON: {}", serde_json::to_string_pretty(input_json)?);
-    debug!(
+    app_log!(debug, "Starting generic semantic field matching");
+    app_log!(debug, "Input JSON: {}", serde_json::to_string_pretty(input_json)?);
+    app_log!(debug, 
         "Endpoint: {} with {} parameters",
         endpoint.id,
         endpoint.parameters.len()
@@ -27,11 +27,11 @@ pub async fn match_fields_semantic(
     // Extract the fields from the LLM's JSON response
     let extracted_fields = extract_fields_from_json(input_json)?;
     if extracted_fields.is_empty() {
-        debug!("No fields extracted from input JSON");
+        app_log!(debug, "No fields extracted from input JSON");
         return create_empty_matches(&endpoint.parameters);
     }
 
-    debug!(
+    app_log!(debug, 
         "Extracted fields: {:?}",
         extracted_fields.keys().collect::<Vec<_>>()
     );
@@ -43,11 +43,11 @@ pub async fn match_fields_semantic(
     let unmatched_required = count_unmatched_required_params(&endpoint.parameters, &direct_matches);
 
     if unmatched_required == 0 {
-        debug!("All required parameters matched directly, skipping semantic matching");
+        app_log!(debug, "All required parameters matched directly, skipping semantic matching");
         return Ok(direct_matches);
     }
 
-    debug!(
+    app_log!(debug, 
         "Found {} unmatched required parameters, attempting semantic matching",
         unmatched_required
     );
@@ -97,7 +97,7 @@ fn try_direct_matching(
         // Try exact parameter name match
         if let Some(value) = extracted_fields.get(&param.name) {
             matched_value = extract_string_value(value);
-            debug!("Direct match for '{}': {:?}", param.name, matched_value);
+            app_log!(debug, "Direct match for '{}': {:?}", param.name, matched_value);
         }
 
         // Try alternatives if provided and no direct match
@@ -106,7 +106,7 @@ fn try_direct_matching(
                 for alt in alternatives {
                     if let Some(value) = extracted_fields.get(alt) {
                         matched_value = extract_string_value(value);
-                        debug!(
+                        app_log!(debug, 
                             "Alternative match '{}' -> '{}': {:?}",
                             alt, param.name, matched_value
                         );
@@ -182,7 +182,7 @@ async fn try_semantic_matching(
         .replace("{input_fields}", &input_fields_str)
         .replace("{parameters}", &parameters_str);
 
-    debug!(
+    app_log!(debug, 
         "Semantic matching prompt generated, length: {} chars",
         prompt.len()
     );
@@ -191,11 +191,11 @@ async fn try_semantic_matching(
     let model_config = &models_config.default;
 
     let result = provider.generate(&prompt, model_config).await?;
-    debug!("Semantic matching raw response: {}", result.content);
+    app_log!(debug, "Semantic matching raw response: {}", result.content);
 
     // Parse the LLM response
     let semantic_json = sanitize_json(&result.content)?;
-    debug!("Parsed semantic matching JSON: {:?}", semantic_json);
+    app_log!(debug, "Parsed semantic matching JSON: {:?}", semantic_json);
 
     // Combine direct matches with semantic matches
     let mut final_matches = Vec::new();
@@ -214,7 +214,7 @@ async fn try_semantic_matching(
                 .unwrap_or(false)
             {
                 final_value = direct_value.clone();
-                debug!("Using direct match for '{}': {:?}", param.name, final_value);
+                app_log!(debug, "Using direct match for '{}': {:?}", param.name, final_value);
             }
         }
 
@@ -222,7 +222,7 @@ async fn try_semantic_matching(
         if final_value.is_none() {
             if let Some(semantic_value) = semantic_json.get(&param.name) {
                 final_value = extract_string_value(semantic_value);
-                debug!(
+                app_log!(debug, 
                     "Using semantic match for '{}': {:?}",
                     param.name, final_value
                 );
@@ -232,7 +232,7 @@ async fn try_semantic_matching(
         final_matches.push((param.name.clone(), param.description.clone(), final_value));
     }
 
-    debug!(
+    app_log!(debug, 
         "Final semantic matches: {:?}",
         final_matches
             .iter()

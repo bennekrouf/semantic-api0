@@ -7,7 +7,7 @@ use std::env;
 use std::error::Error;
 use std::sync::Arc;
 use tokio::time::{Duration, Instant};
-use tracing::info;
+use crate::app_log;
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct EnhancedTestConfig {
@@ -177,17 +177,17 @@ impl ModelComparisonTester {
     ) -> Result<Vec<ComparisonSummary>, Box<dyn Error + Send + Sync>> {
         let mut all_results = Vec::new();
 
-        info!(
+        app_log!(info, 
             "Starting model comparison test with {} iterations",
             self.config.iterations
         );
-        info!("Testing sentence: '{}'", self.config.sentence);
-        info!("Models: {:?}", self.config.models);
-        info!("Prompt versions: {:?}", self.config.prompt_versions);
+        app_log!(info, "Testing sentence: '{}'", self.config.sentence);
+        app_log!(info, "Models: {:?}", self.config.models);
+        app_log!(info, "Prompt versions: {:?}", self.config.prompt_versions);
 
         for model in &self.config.models {
             for version in &self.config.prompt_versions {
-                info!("Testing {} with prompt version {}", model, version);
+                app_log!(info, "Testing {} with prompt version {}", model, version);
 
                 let results = self.test_model_version(model, version).await?;
                 all_results.extend(results);
@@ -214,7 +214,7 @@ impl ModelComparisonTester {
         for iteration in 1..=self.config.iterations {
             let start_time = Instant::now();
 
-            tracing::info!(
+            app_log!(info, 
                 "Calling analyze_sentence_enhanced with sentence: '{}'",
                 &self.config.sentence[..50]
             );
@@ -229,7 +229,7 @@ impl ModelComparisonTester {
             .await
             {
                 Ok(result) => {
-                    tracing::info!(
+                    app_log!(info, 
                         "analyze_sentence_enhanced succeeded for iteration {}",
                         iteration
                     );
@@ -262,7 +262,7 @@ impl ModelComparisonTester {
                     });
                 }
                 Err(e) => {
-                    tracing::error!(
+                    app_log!(error, 
                         "analyze_sentence_enhanced failed for iteration {}: {}",
                         iteration,
                         e
@@ -285,7 +285,7 @@ impl ModelComparisonTester {
             }
 
             if iteration % 5 == 0 {
-                info!(
+                app_log!(info, 
                     "Completed {}/{} iterations for {} {}",
                     iteration, self.config.iterations, model_name, prompt_version
                 );

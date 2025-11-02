@@ -9,7 +9,7 @@ use tonic::transport::Server;
 use tonic_reflection::server::Builder;
 use tonic_web::GrpcWebLayer;
 use tower_http::cors::{Any, CorsLayer};
-use tracing::{error, info};
+use crate::app_log;
 // In src/grpc_server.rs
 pub async fn start_sentence_grpc_server(
     provider: Arc<dyn ModelProvider>,
@@ -19,7 +19,7 @@ pub async fn start_sentence_grpc_server(
     let server_config = match load_server_config().await {
         Ok(config) => config,
         Err(e) => {
-            error!("Failed to load server configuration: {}", e);
+            app_log!(error, "Failed to load server configuration: {}", e);
             return Err(e);
         }
     };
@@ -28,19 +28,19 @@ pub async fn start_sentence_grpc_server(
     let server_addr = format!("{}:{}", server_config.address, server_config.port);
     let addr = server_addr.parse()?;
 
-    info!("Starting sentence analysis gRPC server on {}", addr);
+    app_log!(info, "Starting sentence analysis gRPC server on {}", addr);
 
     // Check if endpoints are available - REQUIRED for startup
     match verify_endpoints_configuration(api_url.clone()).await {
         Ok(true) => {
-            info!("Endpoint configuration verified - either remote service or local file is available");
+            app_log!(info, "Endpoint configuration verified - either remote service or local file is available");
         }
         Ok(false) => {
-            error!("FATAL: No endpoint configuration available! The server cannot start without endpoints.");
+            app_log!(error, "FATAL: No endpoint configuration available! The server cannot start without endpoints.");
             return Err("No endpoint configuration available".into());
         }
         Err(e) => {
-            error!("Error checking endpoint configuration: {}", e);
+            app_log!(error, "Error checking endpoint configuration: {}", e);
             return Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
                 format!("Failed to verify endpoint configuration: {e}"),
@@ -48,7 +48,7 @@ pub async fn start_sentence_grpc_server(
         }
     }
 
-    info!("Email is required for each request - no defaults will be used");
+    app_log!(info, "Email is required for each request - no defaults will be used");
 
     let descriptor_set = include_bytes!(concat!(env!("OUT_DIR"), "/sentence_descriptor.bin"));
     let reflection_service = Builder::configure()
@@ -62,14 +62,14 @@ pub async fn start_sentence_grpc_server(
         .allow_methods(Any)
         .expose_headers(Any);
 
-    tracing::info!("Starting semantic gRPC server on {}", addr);
+    app_log!(info, "Starting semantic gRPC server on {}", addr);
 
     // Use the provider that was passed in from main.rs
     // In src/grpc_server.rs, change the initialization to:
 
     let sentence_service = match get_database_url() {
         Ok(db_url) => {
-            info!("Using database URL: {}", db_url);
+            app_log!(info, "Using database URL: {}", db_url);
             match SentenceAnalyzeService::with_progressive_matching(
                 provider.clone(),
                 api_url.clone(),
@@ -79,15 +79,15 @@ pub async fn start_sentence_grpc_server(
             {
                 Ok(service) => service,
                 Err(e) => {
-                    error!("Failed to initialize with progressive matching: {}", e);
-                    info!("Falling back to service without progressive matching");
+                    app_log!(error, "Failed to initialize with progressive matching: {}", e);
+                    app_log!(info, "Falling back to service without progressive matching");
                     SentenceAnalyzeService::new(provider, api_url)
                 }
             }
         }
         Err(e) => {
-            error!("Failed to resolve database path: {}", e);
-            info!("Falling back to service without progressive matching");
+            app_log!(error, "Failed to resolve database path: {}", e);
+            app_log!(info, "Falling back to service without progressive matching");
             SentenceAnalyzeService::new(provider, api_url)
         }
     };
@@ -104,14 +104,14 @@ pub async fn start_sentence_grpc_server(
         .add_service(reflection_service) // Add reflection service
         .serve_with_shutdown(addr, async {
             tokio::signal::ctrl_c().await.ok();
-            info!("Shutting down semantic server...");
+            app_log!(info, "Shutting down semantic server...");
         })
         .await
     {
         Ok(_) => Ok::<(), Box<dyn std::error::Error + Send + Sync>>(()),
         Err(e) => {
             if e.to_string().contains("Address already in use") {
-                tracing::error!("Port already in use. Please stop other instances first.");
+                app_log!(error, "Port already in use. Please stop other instances first.");
             }
             Err(e.into())
         }

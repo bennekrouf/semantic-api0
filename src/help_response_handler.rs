@@ -5,22 +5,22 @@ use crate::models::EnhancedEndpoint;
 use crate::prompts::PromptManager;
 use std::error::Error;
 use std::sync::Arc;
-use tracing::{debug, info};
+use crate::app_log;
 
 pub async fn handle_help_request(
     sentence: &str,
     available_endpoints: &[EnhancedEndpoint],
     provider: Arc<dyn ModelProvider>,
 ) -> Result<GenerationResult, Box<dyn Error + Send + Sync>> {
-    info!("Handling help request for: {}", sentence);
+    app_log!(info, "Handling help request for: {}", sentence);
 
     // First, detect the language using LLM
     let detected_language = detect_language_with_llm(sentence, provider.clone()).await?;
-    debug!("Detected language: {}", detected_language);
+    app_log!(debug, "Detected language: {}", detected_language);
 
     // Create the exact endpoints list
     let endpoints_list = create_exact_endpoints_list(available_endpoints);
-    debug!(
+    app_log!(debug, 
         "Generated exact endpoints list with {} endpoints",
         available_endpoints.len()
     );
@@ -51,14 +51,14 @@ pub async fn handle_help_request(
         Some("v3"), // Use v3 for minimal transformation
     );
 
-    debug!("Generated help prompt using prompts.yaml");
+    app_log!(debug, "Generated help prompt using prompts.yaml");
 
     let models_config = load_models_config().await?;
     let model_config = &models_config.default;
 
     let result = provider.generate(&full_prompt, model_config).await?;
 
-    info!("Successfully generated help response");
+    app_log!(info, "Successfully generated help response");
     Ok(result)
 }
 
@@ -83,10 +83,10 @@ async fn detect_language_with_llm(
         "en", "fr", "es", "de", "it", "pt", "nl", "ru", "ja", "zh", "ko", "ar",
     ];
     if valid_languages.contains(&detected_language.as_str()) {
-        debug!("LLM detected language: {}", detected_language);
+        app_log!(debug, "LLM detected language: {}", detected_language);
         Ok(detected_language)
     } else {
-        debug!(
+        app_log!(debug, 
             "LLM returned invalid language code '{}', defaulting to 'en'",
             detected_language
         );

@@ -1,8 +1,8 @@
 // src/progressive_matching.rs - PostgreSQL implementation
+use crate::app_log;
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::error::Error;
-use tracing::{debug, info};
 
 use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod};
 use tokio_postgres::Config as PgConfig;
@@ -12,7 +12,7 @@ async fn create_db_pool(database_url: &str) -> Result<Pool, Box<dyn Error + Send
     // Parse the PostgreSQL connection string directly
     let pg_config: PgConfig = database_url.parse()?;
 
-    let mgr_config = ManagerConfig {
+    let _mgr_config = ManagerConfig {
         recycling_method: RecyclingMethod::Fast,
     };
     let mgr = Manager::new(pg_config, NoTls);
@@ -148,9 +148,11 @@ impl ProgressiveMatchingManager {
             )
             .await?;
 
-        info!(
+        app_log!(
+            info,
             "Updated progressive match for conversation: {} endpoint: {}",
-            conversation_id, endpoint_id
+            conversation_id,
+            endpoint_id
         );
         Ok(())
     }
@@ -195,7 +197,8 @@ impl ProgressiveMatchingManager {
             )
             .await?;
 
-        info!(
+        app_log!(
+            info,
             "Completed and cleaned up match for conversation: {}",
             conversation_id
         );
@@ -339,9 +342,11 @@ pub async fn integrate_progressive_matching(
         )
         .await?;
 
-    debug!(
+    app_log!(
+        debug,
         "Progressive matching result: completion {}%, ready: {}",
-        result.completion_percentage, result.ready_for_execution
+        result.completion_percentage,
+        result.ready_for_execution
     );
 
     Ok(result)

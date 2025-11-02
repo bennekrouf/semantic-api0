@@ -126,9 +126,9 @@ pub struct MatchingInfo {
 impl MatchingInfo {
     pub fn compute(parameters: &[ParameterMatch], endpoint_params: &[EndpointParameter]) -> Self {
         use std::collections::HashMap;
-        use tracing::{debug, warn};
+        use crate::app_log;
 
-        debug!(
+        app_log!(debug, 
             "MatchingInfo::compute called with {} ParameterMatch and {} EndpointParameter",
             parameters.len(),
             endpoint_params.len()
@@ -136,11 +136,11 @@ impl MatchingInfo {
 
         // Log what we receive
         for param in parameters {
-            debug!("ParameterMatch: '{}' = {:?}", param.name, param.value);
+            app_log!(debug, "ParameterMatch: '{}' = {:?}", param.name, param.value);
         }
 
         for param in endpoint_params {
-            debug!(
+            app_log!(debug, 
                 "EndpointParameter: '{}' (required: {:?})",
                 param.name, param.required
             );
@@ -157,7 +157,7 @@ impl MatchingInfo {
 
         for param in endpoint_params {
             if unique_params.contains_key(&param.name) {
-                warn!(
+                app_log!(warn, 
                     "DUPLICATE found: parameter '{}' appears multiple times",
                     param.name
                 );
@@ -167,13 +167,13 @@ impl MatchingInfo {
         }
 
         if duplicates_found {
-            warn!(
+            app_log!(warn, 
                 "Duplicates were found and removed. Unique parameters: {:?}",
                 unique_params.keys().collect::<Vec<_>>()
             );
         }
 
-        debug!(
+        app_log!(debug, 
             "After deduplication: {} unique parameters",
             unique_params.len()
         );
@@ -182,7 +182,7 @@ impl MatchingInfo {
         let param_lookup: HashMap<String, &ParameterMatch> =
             parameters.iter().map(|p| (p.name.clone(), p)).collect();
 
-        debug!(
+        app_log!(debug, 
             "Parameter lookup created with {} entries",
             param_lookup.len()
         );
@@ -197,7 +197,7 @@ impl MatchingInfo {
                     .and_then(|p| has_valid_value(p))
                     .unwrap_or(false);
 
-                debug!(
+                app_log!(debug, 
                     "Processing '{}': required={}, matched={}, has_value={}",
                     endpoint_param.name,
                     is_required,
@@ -211,10 +211,10 @@ impl MatchingInfo {
                 };
 
                 if is_required {
-                    debug!("  -> Adding to REQUIRED list");
+                    app_log!(debug, "  -> Adding to REQUIRED list");
                     (Some(result), None)
                 } else {
-                    debug!("  -> Adding to OPTIONAL list");
+                    app_log!(debug, "  -> Adding to OPTIONAL list");
                     (None, Some(result))
                 }
             })
@@ -226,17 +226,17 @@ impl MatchingInfo {
         let optional_results: Vec<ParameterResult> =
             optional_results.into_iter().flatten().collect();
 
-        debug!("Required parameters: {} total", required_results.len());
+        app_log!(debug, "Required parameters: {} total", required_results.len());
         for result in &required_results {
-            debug!(
+            app_log!(debug, 
                 "  Required: '{}' has_value={}",
                 result.endpoint_param.name, result.has_value
             );
         }
 
-        debug!("Optional parameters: {} total", optional_results.len());
+        app_log!(debug, "Optional parameters: {} total", optional_results.len());
         for result in &optional_results {
-            debug!(
+            app_log!(debug, 
                 "  Optional: '{}' has_value={}",
                 result.endpoint_param.name, result.has_value
             );
@@ -265,23 +265,23 @@ impl MatchingInfo {
             })
             .collect();
 
-        debug!("FINAL RESULTS:");
-        debug!(
+        app_log!(debug, "FINAL RESULTS:");
+        app_log!(debug, 
             "  Required: {}/{} mapped",
             mapped_required_fields, total_required_fields
         );
-        debug!(
+        app_log!(debug, 
             "  Optional: {}/{} mapped",
             mapped_optional_fields, total_optional_fields
         );
-        debug!(
+        app_log!(debug, 
             "  Missing required: {:?}",
             missing_required_fields
                 .iter()
                 .map(|f| &f.name)
                 .collect::<Vec<_>>()
         );
-        debug!(
+        app_log!(debug, 
             "  Missing optional: {:?}",
             missing_optional_fields
                 .iter()

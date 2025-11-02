@@ -14,10 +14,10 @@ pub mod sentence {
     tonic::include_proto!("sentence");
 }
 
+use crate::app_log;
 use sentence::sentence_service_server::SentenceService;
 use sentence::{MessageRequest, MessageResponse, SentenceRequest, SentenceResponse};
 use tonic::codegen::tokio_stream::wrappers::ReceiverStream;
-
 pub struct SentenceAnalyzeService {
     analyzer: SentenceAnalyzer,
 }
@@ -116,13 +116,13 @@ impl SentenceService for SentenceAnalyzeService {
         let metadata = request.metadata().clone();
         let sentence_request = request.into_inner();
 
-        tracing::info!("Request metadata: {:?}", metadata);
+        app_log!(info, "Request metadata: {:?}", metadata);
 
         let client_id = Self::get_client_id(&metadata);
         let email = match self.get_email_validated(&metadata) {
             Ok(email) => email,
             Err(status) => {
-                tracing::error!("Email validation failed: {}", status);
+                app_log!(error, "Email validation failed: {}", status);
                 return Err(status);
             }
         };
@@ -135,12 +135,12 @@ impl SentenceService for SentenceAnalyzeService {
         {
             Ok(id) => id,
             Err(e) => {
-                tracing::error!("Failed to ensure conversation_id: {}", e);
+                app_log!(error, "Failed to ensure conversation_id: {}", e);
                 return Err(Status::internal("Failed to manage conversation"));
             }
         };
 
-        tracing::info!(
+        app_log!(info,
             input_sentence = %input_sentence,
             email = %email,
             conversation_id = %conversation_id,
@@ -174,7 +174,7 @@ impl SentenceService for SentenceAnalyzeService {
             .conversation_id
             .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
-        tracing::info!(
+        app_log!(info,
             message = %message,
             conversation_id = %conversation_id,
             "Processing message"
@@ -183,7 +183,7 @@ impl SentenceService for SentenceAnalyzeService {
         let models_config = match crate::models::config::load_models_config().await {
             Ok(config) => config,
             Err(e) => {
-                tracing::error!("Failed to load models config: {}", e);
+                app_log!(error, "Failed to load models config: {}", e);
                 return Err(Status::internal("Configuration error"));
             }
         };
@@ -197,7 +197,7 @@ impl SentenceService for SentenceAnalyzeService {
             .await
         {
             Ok(result) => {
-                tracing::info!("Successfully generated response");
+                app_log!(info, "Successfully generated response");
                 Ok(Response::new(MessageResponse {
                     response: result.content,
                     success: true,
@@ -205,7 +205,7 @@ impl SentenceService for SentenceAnalyzeService {
                 }))
             }
             Err(e) => {
-                tracing::error!("Failed to generate response: {}", e);
+                app_log!(error, "Failed to generate response: {}", e);
                 Err(Status::internal("Failed to generate response"))
             }
         }

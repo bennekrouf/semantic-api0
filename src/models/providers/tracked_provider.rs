@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use std::error::Error;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing::debug;
+use crate::app_log;
 
 pub struct TrackedProvider {
     inner: Arc<dyn ModelProvider>,
@@ -42,7 +42,7 @@ impl ModelProvider for TrackedProvider {
         prompt: &str,
         config: &ModelConfig,
     ) -> Result<GenerationResult, Box<dyn Error + Send + Sync>> {
-        debug!(
+        app_log!(debug, 
             "TrackedProvider: Making LLM call with prompt length: {}",
             prompt.len()
         );
@@ -58,7 +58,7 @@ impl ModelProvider for TrackedProvider {
             *input_total += result.usage.input_tokens;
             *output_total += result.usage.output_tokens;
 
-            debug!(
+            app_log!(debug, 
                 "TrackedProvider: Call used {} input / {} output tokens (totals: {} / {})",
                 result.usage.input_tokens, result.usage.output_tokens, *input_total, *output_total
             );

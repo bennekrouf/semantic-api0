@@ -2,7 +2,7 @@
 use crate::models::ModelsConfig;
 use serde::Deserialize;
 use std::error::Error;
-use tracing::debug;
+use crate::app_log;
 
 use std::env;
 
@@ -58,8 +58,8 @@ pub async fn load_models_config() -> Result<ModelsConfig, Box<dyn Error + Send +
     let config_str = tokio::fs::read_to_string(&config_path).await?;
     let config: Config = serde_yaml::from_str(&config_str)?;
 
-    debug!("Loaded models configuration from: {}", config_path);
-    debug!("Models config: {:#?}", config.models);
+    app_log!(debug, "Loaded models configuration from: {}", config_path);
+    app_log!(debug, "Models config: {:#?}", config.models);
 
     Ok(config.models)
 }
@@ -70,8 +70,8 @@ pub async fn load_server_config() -> Result<ServerConfig, Box<dyn Error + Send +
     let config_str = tokio::fs::read_to_string(&config_path).await?;
     let config: Config = serde_yaml::from_str(&config_str)?;
 
-    debug!("Loaded server configuration from: {}", config_path);
-    debug!("Server config: {:#?}", config.server);
+    app_log!(debug, "Loaded server configuration from: {}", config_path);
+    app_log!(debug, "Server config: {:#?}", config.server);
 
     Ok(config.server)
 }
@@ -83,8 +83,8 @@ pub async fn load_endpoint_client_config(
     let config_str = tokio::fs::read_to_string(&config_path).await?;
     let config: Config = serde_yaml::from_str(&config_str)?;
 
-    debug!("Loaded endpoint client configuration from: {}", config_path);
-    debug!("Endpoint client config: {:#?}", config.endpoint_client);
+    app_log!(debug, "Loaded endpoint client configuration from: {}", config_path);
+    app_log!(debug, "Endpoint client config: {:#?}", config.endpoint_client);
 
     Ok(config.endpoint_client)
 }
@@ -95,10 +95,10 @@ pub async fn load_analysis_config() -> Result<AnalysisConfig, Box<dyn Error + Se
     let config_str = tokio::fs::read_to_string(&config_path).await?;
     let config: Config = serde_yaml::from_str(&config_str)?;
 
-    debug!("Loaded analysis configuration from: {}", config_path);
+    app_log!(debug, "Loaded analysis configuration from: {}", config_path);
 
     let analysis_config = config.analysis.unwrap_or_default();
-    debug!("Analysis config: {:#?}", analysis_config);
+    app_log!(debug, "Analysis config: {:#?}", analysis_config);
 
     Ok(analysis_config)
 }

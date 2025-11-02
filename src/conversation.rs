@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, info};
+use crate::app_log;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,7 +66,7 @@ impl ConversationManager {
             messages.insert(conversation_id.clone(), Vec::new());
         }
 
-        info!("Started new conversation: {}", conversation_id);
+        app_log!(info, "Started new conversation: {}", conversation_id);
         Ok(conversation_id)
     }
 
@@ -110,7 +110,7 @@ impl ConversationManager {
             }
         }
 
-        debug!("Added message to conversation: {}", conversation_id);
+        app_log!(debug, "Added message to conversation: {}", conversation_id);
         Ok(())
     }
 
@@ -141,7 +141,7 @@ impl ConversationManager {
     //             messages.remove(id);
     //         }
     //
-    //         info!("Cleaned up {} old conversations", to_remove.len());
+    //         app_log!(info, "Cleaned up {} old conversations", to_remove.len());
     //     }
     // }
 }

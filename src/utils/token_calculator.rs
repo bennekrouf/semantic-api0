@@ -1,6 +1,6 @@
 // src/utils/token_calculator.rs
 use std::collections::HashMap;
-use tracing::debug;
+use crate::app_log;
 
 pub struct EnhancedTokenCalculator {
     // More accurate token estimation ratios per provider
@@ -100,7 +100,7 @@ impl EnhancedTokenCalculator {
         let combined_estimate =
             ((char_estimate as f32 * 0.6) + (word_estimate as f32 * 0.4)) as u32;
 
-        debug!(
+        app_log!(debug, 
             "Token estimation for {} ({}): chars={}, words={}, combined={}, text_len={}",
             provider,
             language.unwrap_or("en"),
@@ -165,7 +165,7 @@ impl EnhancedTokenCalculator {
         let output_tokens =
             self.estimate_tokens_enhanced(output_text, provider, Some(output_language));
 
-        debug!(
+        app_log!(debug, 
             "Enhanced token calculation for {}: input={} tokens ({}), output={} tokens ({})",
             provider, input_tokens, input_language, output_tokens, output_language
         );

@@ -6,7 +6,7 @@ use endpoint::endpoint_service_client::EndpointServiceClient;
 use endpoint::{Endpoint, GetApiGroupsRequest};
 use std::error::Error;
 use tonic::transport::Channel;
-use tracing::{error, info, warn};
+use crate::app_log;
 /// Get the default API URL from configuration if not provided via CLI
 pub async fn get_default_api_url() -> Result<String, Box<dyn Error + Send + Sync>> {
     let endpoint_client_config = load_endpoint_client_config().await?;
@@ -47,21 +47,21 @@ pub async fn get_default_api_url() -> Result<String, Box<dyn Error + Send + Sync
 pub async fn check_endpoint_service_health(
     addr: &str,
 ) -> Result<bool, Box<dyn Error + Send + Sync>> {
-    info!("Checking health of endpoint service at {}", addr);
+    app_log!(info, "Checking health of endpoint service at {}", addr);
 
     match Channel::from_shared(addr.to_string()) {
         Ok(channel) => match channel.connect().await {
             Ok(_) => {
-                info!("Endpoint service is available at {}", addr);
+                app_log!(info, "Endpoint service is available at {}", addr);
                 Ok(true)
             }
             Err(e) => {
-                warn!("Endpoint service is not available at {}: {}", addr, e);
+                app_log!(warn, "Endpoint service is not available at {}: {}", addr, e);
                 Ok(false)
             }
         },
         Err(e) => {
-            error!("Invalid endpoint service address {}: {}", addr, e);
+            app_log!(error, "Invalid endpoint service address {}: {}", addr, e);
             Err(Box::new(e))
         }
     }
@@ -75,7 +75,7 @@ pub async fn verify_endpoints_configuration(
     if let Some(url) = &api_url {
         match check_endpoint_service_health(url).await {
             Ok(true) => {
-                info!("Remote endpoint service is available at {}", url);
+                app_log!(info, "Remote endpoint service is available at {}", url);
                 Ok(true)
             }
             _ => Err(format!("Endpoint service is not available at {url}").into()),
@@ -105,7 +105,7 @@ pub async fn get_default_endpoints(
         email: email.to_string(),
     });
 
-    info!("Fetching API groups for email: {}", email);
+    app_log!(info, "Fetching API groups for email: {}", email);
 
     // Make the streaming call
     let response = client.get_api_groups(request).await?;
@@ -115,7 +115,7 @@ pub async fn get_default_endpoints(
 
     // Collect all API groups from the stream
     while let Some(response) = stream.message().await? {
-        info!("Received batch of {} API groups", response.api_groups.len());
+        app_log!(info, "Received batch of {} API groups", response.api_groups.len());
         api_groups.extend(response.api_groups);
     }
 
@@ -125,18 +125,18 @@ pub async fn get_default_endpoints(
         .flat_map(|group| group.endpoints.clone())
         .collect();
 
-    info!(
+    app_log!(info, 
         "Successfully fetched {} endpoints from {} API groups",
         all_endpoints.len(),
         api_groups.len()
     );
 
     if all_endpoints.is_empty() {
-        error!("Remote service returned 0 endpoints for email: {}", email);
-        error!("This means either:");
-        error!("  1. No endpoints are configured for this user account");
-        error!("  2. The user email is not registered in the system");
-        error!("  3. The endpoint service has no data available");
+        app_log!(error, "Remote service returned 0 endpoints for email: {}", email);
+        app_log!(error, "This means either:");
+        app_log!(error, "  1. No endpoints are configured for this user account");
+        app_log!(error, "  2. The user email is not registered in the system");
+        app_log!(error, "  3. The endpoint service has no data available");
 
         return Err(format!(
             "No endpoints available for user '{email}'. Please verify your email address or contact your administrator."

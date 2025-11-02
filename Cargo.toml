@@ -31,6 +31,7 @@ tokio-postgres = { version = "0.7.14", features = ["with-chrono-0_4"] }
 deadpool-postgres = { version = "0.14.1", features = ["serde"] }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+graflog = "1.0.0"
 
 
 [build-dependencies]

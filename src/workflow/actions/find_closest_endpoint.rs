@@ -1,6 +1,6 @@
 use std::error::Error;
 use std::sync::Arc;
-use tracing::{debug, error, info, warn};
+use crate::app_log;
 
 use crate::models::config::load_models_config;
 use crate::models::providers::ModelProvider;
@@ -12,11 +12,11 @@ pub async fn find_closest_endpoint_pure_llm(
     input_sentence: &str,
     provider: Arc<dyn ModelProvider>,
 ) -> Result<EnhancedEndpoint, Box<dyn Error + Send + Sync>> {
-    info!(
+    app_log!(info, 
         "Starting pure LLM endpoint matching for input: {}",
         input_sentence
     );
-    debug!("Available endpoints: {}", enhanced_endpoints.len());
+    app_log!(debug, "Available endpoints: {}", enhanced_endpoints.len());
 
     if enhanced_endpoints.is_empty() {
         return Err("No endpoints available for matching".into());
@@ -41,18 +41,18 @@ pub async fn find_closest_endpoint_pure_llm(
     // Get formatted prompt from PromptManager using v2
     let prompt =
         prompt_manager.format_find_endpoint_v2(input_sentence, &endpoints_list, Some("v2"));
-    debug!("Generated prompt:\n{}", prompt);
+    app_log!(debug, "Generated prompt:\n{}", prompt);
 
     // Use the provider to get LLM response
-    info!("Using LLM for semantic endpoint selection");
+    app_log!(info, "Using LLM for semantic endpoint selection");
     let raw_response = provider.generate(&prompt, model_config).await?;
-    debug!("Raw LLM response: '{:?}'", raw_response);
+    app_log!(debug, "Raw LLM response: '{:?}'", raw_response);
 
     // Extract endpoint ID from response
     let endpoint_id = raw_response.content.trim();
 
     if endpoint_id == "NO_MATCH" {
-        error!("LLM determined no suitable endpoint matches the input");
+        app_log!(error, "LLM determined no suitable endpoint matches the input");
         return Err("No suitable endpoint found for the given input".into());
     }
 
@@ -64,15 +64,15 @@ pub async fn find_closest_endpoint_pure_llm(
 
     match matched_endpoint {
         Some(endpoint) => {
-            info!("Successfully matched endpoint: {}", endpoint.id);
+            app_log!(info, "Successfully matched endpoint: {}", endpoint.id);
             Ok(endpoint)
         }
         None => {
-            warn!(
+            app_log!(warn, 
                 "LLM returned endpoint ID '{}' which doesn't exist in available endpoints",
                 endpoint_id
             );
-            error!(
+            app_log!(error, 
                 "Available endpoint IDs: {:?}",
                 enhanced_endpoints.iter().map(|e| &e.id).collect::<Vec<_>>()
             );
@@ -88,7 +88,7 @@ pub async fn find_closest_endpoint_pure_llm(
 
             match fallback_match {
                 Some(endpoint) => {
-                    warn!("Found fallback match: {}", endpoint.id);
+                    app_log!(warn, "Found fallback match: {}", endpoint.id);
                     Ok(endpoint)
                 }
                 None => Err(format!(

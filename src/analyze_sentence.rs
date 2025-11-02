@@ -18,7 +18,7 @@ use crate::progressive_matching::ProgressiveMatchingManager;
 use async_trait::async_trait;
 use std::error::Error;
 use std::sync::Arc;
-use tracing::{debug, error, info, warn};
+use crate::app_log;
 
 // Enhanced configuration loading step that extends the existing workflow
 pub struct EnhancedConfigurationLoadingStep {
@@ -32,7 +32,7 @@ impl WorkflowStep for EnhancedConfigurationLoadingStep {
         &self,
         context: &mut WorkflowContext,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        info!("Loading enhanced configurations with complete endpoint metadata");
+        app_log!(info, "Loading enhanced configurations with complete endpoint metadata");
 
         if self.email.is_empty() {
             return Err("Email is required and cannot be empty".into());
@@ -45,7 +45,7 @@ impl WorkflowStep for EnhancedConfigurationLoadingStep {
 
         match check_endpoint_service_health(api_url).await {
             Ok(true) => {
-                info!("Remote endpoint service available, fetching enhanced endpoints");
+                app_log!(info, "Remote endpoint service available, fetching enhanced endpoints");
 
                 match get_enhanced_endpoints(api_url, &self.email).await {
                     Ok(enhanced_endpoints) => {
@@ -75,7 +75,7 @@ impl WorkflowStep for EnhancedConfigurationLoadingStep {
                         // Store enhanced endpoints for later use
                         context.enhanced_endpoints = Some(enhanced_endpoints);
 
-                        info!(
+                        app_log!(info, 
                             "Successfully loaded {} enhanced endpoints",
                             context.enhanced_endpoints.as_ref().unwrap().len()
                         );
@@ -129,7 +129,7 @@ impl WorkflowStep for JsonGenerationStep {
         context.total_input_tokens += step_usage.input_tokens;
         context.total_output_tokens += step_usage.output_tokens;
 
-        debug!(
+        app_log!(debug, 
             "JSON generation step added {} input tokens, {} output tokens",
             step_usage.input_tokens, step_usage.output_tokens
         );
@@ -170,7 +170,7 @@ impl WorkflowStep for EndpointMatchingStep {
         context.total_input_tokens += step_usage.input_tokens;
         context.total_output_tokens += step_usage.output_tokens;
 
-        debug!(
+        app_log!(debug, 
             "Endpoint matching step added {} input tokens, {} output tokens",
             step_usage.input_tokens, step_usage.output_tokens
         );
@@ -233,7 +233,7 @@ impl WorkflowStep for FieldMatchingStep {
         context.total_input_tokens += step_usage.input_tokens;
         context.total_output_tokens += step_usage.output_tokens;
 
-        debug!(
+        app_log!(debug, 
             "Field matching step added {} input tokens, {} output tokens",
             step_usage.input_tokens, step_usage.output_tokens
         );
@@ -257,7 +257,7 @@ async fn analyze_with_retry(
     let mut last_error = None;
 
     for attempt in 1..=retry_attempts {
-        info!(
+        app_log!(info, 
             "Analysis attempt {}/{} for: {}",
             attempt, retry_attempts, sentence
         );
@@ -272,7 +272,7 @@ async fn analyze_with_retry(
         .await
         {
             Ok(result) => {
-                info!("Analysis succeeded on attempt {}", attempt);
+                app_log!(info, "Analysis succeeded on attempt {}", attempt);
                 return Ok(result);
             }
             Err(e) => {
@@ -280,7 +280,7 @@ async fn analyze_with_retry(
                 if error_msg.contains("No suitable endpoint found")
                     || error_msg.contains("not found in available endpoints")
                 {
-                    warn!(
+                    app_log!(warn, 
                         "Endpoint matching failed on attempt {}: {}",
                         attempt, error_msg
                     );
@@ -366,7 +366,7 @@ steps:
                 engine.register_step(step_config, Arc::new(FieldMatchingStep));
             }
             _ => {
-                error!("Unknown step: {}", step_config.name);
+                app_log!(error, "Unknown step: {}", step_config.name);
                 return Err(format!("Unknown step: {}", step_config.name).into());
             }
         }
@@ -404,7 +404,7 @@ steps:
 
     // If workflow didn't track tokens properly, estimate them based on the sentence and response
     let (final_input_tokens, final_output_tokens) = if context.total_output_tokens == 0 {
-        debug!("Workflow reported 0 output tokens, estimating output tokens");
+        app_log!(debug, "Workflow reported 0 output tokens, estimating output tokens");
 
         let enhanced_calculator = crate::utils::token_calculator::EnhancedTokenCalculator::new();
 
@@ -462,7 +462,7 @@ steps:
         );
         let estimated_output = content_tokens + reasoning_overhead;
 
-        debug!("Output estimation breakdown: content='{}' ({} tokens), reasoning overhead ({} tokens), total output: {}", 
+        app_log!(debug, "Output estimation breakdown: content='{}' ({} tokens), reasoning overhead ({} tokens), total output: {}", 
                total_output_content.chars().take(100).collect::<String>(),
                content_tokens, reasoning_overhead, estimated_output);
 
@@ -480,7 +480,7 @@ steps:
         estimated: true, // Workflow aggregates multiple calls, so mark as estimated
     };
 
-    debug!(
+    app_log!(debug, 
         "Final workflow token usage: input={}, output={}, total={}",
         usage_info.input_tokens, usage_info.output_tokens, usage_info.total_tokens
     );
@@ -526,7 +526,7 @@ pub async fn analyze_sentence_enhanced(
         .await
         .unwrap_or_default();
 
-    info!(
+    app_log!(info, 
         "Starting enhanced sentence analysis with {} retry attempts for: {}",
         analysis_config.retry_attempts, sentence
     );
@@ -536,7 +536,7 @@ pub async fn analyze_sentence_enhanced(
     // STEP 1: PROGRESSIVE MATCHING CHECK (HIGHEST PRIORITY)
     // If we have a conversation_id, check for ongoing requests FIRST
     if let Some(ref conv_id) = conversation_id {
-        info!(
+        app_log!(info, 
             "Checking for ongoing progressive match for conversation: {}",
             conv_id
         );
@@ -546,7 +546,7 @@ pub async fn analyze_sentence_enhanced(
                 // Check if there's an ongoing incomplete match
                 match progressive_manager.get_incomplete_match(conv_id).await {
                     Ok(Some(ongoing_match)) => {
-                        info!(
+                        app_log!(info, 
                             "Found ongoing progressive match for endpoint: {}",
                             ongoing_match.endpoint_id
                         );
@@ -564,11 +564,11 @@ pub async fn analyze_sentence_enhanced(
                         .await
                         {
                             Ok(progressive_result) => {
-                                info!("Progressive matching completed successfully");
+                                app_log!(info, "Progressive matching completed successfully");
                                 return Ok(progressive_result);
                             }
                             Err(e) => {
-                                warn!(
+                                app_log!(warn, 
                                     "Progressive matching failed: {}, continuing with normal flow",
                                     e
                                 );
@@ -577,13 +577,13 @@ pub async fn analyze_sentence_enhanced(
                         }
                     }
                     Ok(None) => {
-                        debug!(
+                        app_log!(debug, 
                             "No ongoing progressive match found for conversation: {}",
                             conv_id
                         );
                     }
                     Err(e) => {
-                        warn!(
+                        app_log!(warn, 
                             "Error checking for progressive match: {}, continuing with normal flow",
                             e
                         );
@@ -595,7 +595,7 @@ pub async fn analyze_sentence_enhanced(
 
     // STEP 2: NORMAL FLOW (Intent Classification + Endpoint Matching)
     // Only reached if no progressive match was found or it failed
-    info!("No progressive match found, proceeding with normal analysis flow");
+    app_log!(info, "No progressive match found, proceeding with normal analysis flow");
 
     let enhanced_endpoints = get_enhanced_endpoints(api_url_ref, email).await?;
     let endpoint_descriptions: Vec<String> = enhanced_endpoints
@@ -607,7 +607,7 @@ pub async fn analyze_sentence_enhanced(
 
     match intent {
         IntentType::ActionableRequest => {
-            info!("Processing as NEW actionable request");
+            app_log!(info, "Processing as NEW actionable request");
             match analyze_with_retry(
                 sentence,
                 provider.clone(),
@@ -621,7 +621,7 @@ pub async fn analyze_sentence_enhanced(
                 Ok(result) => Ok(result),
                 Err(e) => {
                     if analysis_config.fallback_to_general {
-                        warn!(
+                        app_log!(warn, 
                             "All retries failed, falling back to general question handler: {}",
                             e
                         );
@@ -634,12 +634,12 @@ pub async fn analyze_sentence_enhanced(
         }
 
         IntentType::HelpRequest => {
-            info!("Processing as help request");
+            app_log!(info, "Processing as help request");
             create_help_response(sentence, &enhanced_endpoints, provider, conversation_id).await
         }
 
         IntentType::GeneralQuestion => {
-            info!("Processing as general question");
+            app_log!(info, "Processing as general question");
             create_general_response(sentence, provider, model, conversation_id).await
         }
     }
@@ -655,7 +655,7 @@ async fn handle_progressive_followup(
     api_url: &str,
     email: &str,
 ) -> Result<EnhancedAnalysisResult, Box<dyn Error + Send + Sync>> {
-    info!(
+    app_log!(info, 
         "Processing progressive follow-up for endpoint: {}",
         ongoing_match.endpoint_id
     );
@@ -667,7 +667,7 @@ async fn handle_progressive_followup(
         .find(|e| e.id == ongoing_match.endpoint_id)
         .ok_or_else(|| format!("Endpoint {} not found", ongoing_match.endpoint_id))?;
 
-    info!(
+    app_log!(info, 
         "Found endpoint: {} with {} parameters",
         endpoint.name,
         endpoint.parameters.len()
@@ -677,7 +677,7 @@ async fn handle_progressive_followup(
     let new_parameters =
         extract_parameters_from_followup(sentence, provider.clone(), &endpoint.parameters).await?;
 
-    info!(
+    app_log!(info, 
         "Extracted {} new parameters from follow-up",
         new_parameters.len()
     );
@@ -712,7 +712,7 @@ async fn handle_progressive_followup(
         )
         .await?;
 
-    info!(
+    app_log!(info, 
         "Progressive matching completion: {}% complete, is_complete: {}",
         completion_result.completion_percentage, completion_result.is_complete
     );
@@ -723,7 +723,7 @@ async fn handle_progressive_followup(
             .complete_match(conversation_id, &ongoing_match.endpoint_id)
             .await?;
 
-        info!("Progressive matching completed successfully");
+        app_log!(info, "Progressive matching completed successfully");
         create_complete_progressive_response(
             endpoint,
             completion_result,
@@ -731,7 +731,7 @@ async fn handle_progressive_followup(
         )
         .await
     } else {
-        info!("Progressive matching still incomplete, prompting for more parameters");
+        app_log!(info, "Progressive matching still incomplete, prompting for more parameters");
         create_partial_progressive_response(
             endpoint,
             completion_result,
@@ -750,7 +750,7 @@ async fn extract_parameters_from_followup(
     Vec<crate::progressive_matching::ParameterValue>,
     Box<dyn std::error::Error + Send + Sync>,
 > {
-    info!("Extracting parameters from follow-up: '{}'", sentence);
+    app_log!(info, "Extracting parameters from follow-up: '{}'", sentence);
 
     let prompt_manager = crate::prompts::PromptManager::new().await?;
     let available_params: Vec<String> = endpoint_parameters

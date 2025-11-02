@@ -1,7 +1,7 @@
 // src/cli.rs - Updated to use only Cohere
 use clap::Parser;
 use std::{error::Error, sync::Arc};
-use tracing::{error, info};
+use crate::app_log;
 
 use crate::comparison_test::run_model_comparison;
 use crate::endpoint_client::get_default_api_url;
@@ -142,7 +142,7 @@ pub async fn handle_cli(
         let email = match &cli.email {
             Some(email) => email.clone(),
             None => {
-                error!("Email is required when listing endpoints");
+                app_log!(error, "Email is required when listing endpoints");
                 return Err(
                     "Email is required when listing endpoints. Please provide it with --email"
                         .into(),
@@ -154,7 +154,7 @@ pub async fn handle_cli(
         if cli.api.is_none() {
             match get_default_api_url().await {
                 Ok(url) => {
-                    info!("Using default API URL from config: {}", url);
+                    app_log!(info, "Using default API URL from config: {}", url);
                     cli.api = Some(url);
                 }
                 Err(e) => {
@@ -174,13 +174,13 @@ pub async fn handle_cli(
             Some(email) => {
                 // Validate email
                 if let Err(e) = validate_email(email) {
-                    error!("Invalid email: {}", e);
+                    app_log!(error, "Invalid email: {}", e);
                     return Err(format!("Email is required when analyzing a sentence: {e}").into());
                 }
                 email.clone()
             }
             None => {
-                error!("Email is required when analyzing a sentence");
+                app_log!(error, "Email is required when analyzing a sentence");
                 return Err(
                     "Email is required when analyzing a sentence. Please provide it with --email"
                         .into(),
@@ -188,17 +188,17 @@ pub async fn handle_cli(
             }
         };
 
-        info!("Using {} API for analysis", cli.provider);
+        app_log!(info, "Using {} API for analysis", cli.provider);
 
         // If API URL not provided in CLI, try to get default from config
         if cli.api.is_none() {
             match get_default_api_url().await {
                 Ok(url) => {
-                    info!("Using default API URL from config: {}", url);
+                    app_log!(info, "Using default API URL from config: {}", url);
                     cli.api = Some(url);
                 }
                 Err(e) => {
-                    info!(
+                    app_log!(info, 
                         "Could not get default API URL, using local endpoints: {}",
                         e
                     );
@@ -211,8 +211,8 @@ pub async fn handle_cli(
             None => "local file".to_string(),
         };
 
-        info!("Using endpoints from {}", endpoint_source);
-        info!("Analyzing prompt via CLI: {}", prompt);
+        app_log!(info, "Using endpoints from {}", endpoint_source);
+        app_log!(info, "Analyzing prompt via CLI: {}", prompt);
 
         // Pass the API URL and email to analyze_sentence
         let result = analyze_sentence_enhanced(&prompt, provider, cli.api, &email, None).await?;
@@ -284,11 +284,11 @@ pub async fn list_endpoints_for_email(
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     use crate::endpoint_client::{check_endpoint_service_health, get_default_endpoints};
 
-    info!("Listing endpoints for email: {}", email);
+    app_log!(info, "Listing endpoints for email: {}", email);
 
     // Validate email
     if let Err(e) = validate_email(email) {
-        error!("Invalid email: {}", e);
+        app_log!(error, "Invalid email: {}", e);
         return Err(format!("Invalid email format: {e}").into());
     }
 
@@ -297,7 +297,7 @@ pub async fn list_endpoints_for_email(
         Some(url) => url,
         None => match get_default_api_url().await {
             Ok(url) => {
-                info!("Using default API URL from config: {}", url);
+                app_log!(info, "Using default API URL from config: {}", url);
                 url
             }
             Err(e) => {
@@ -306,12 +306,12 @@ pub async fn list_endpoints_for_email(
         },
     };
 
-    info!("Connecting to endpoint service at: {}", final_api_url);
+    app_log!(info, "Connecting to endpoint service at: {}", final_api_url);
 
     // Check service health first
     match check_endpoint_service_health(&final_api_url).await {
         Ok(true) => {
-            info!("✅ Endpoint service is available");
+            app_log!(info, "✅ Endpoint service is available");
         }
         Ok(false) => {
             return Err("❌ Endpoint service is not responding".into());

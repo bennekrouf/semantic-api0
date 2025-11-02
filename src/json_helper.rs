@@ -1,17 +1,17 @@
 use regex::Regex;
 use serde_json::Value;
 use std::error::Error;
-use tracing::{debug, error};
+use crate::app_log;
 
 pub fn sanitize_json(raw_text: &str) -> Result<Value, Box<dyn Error + Send + Sync>> {
-    //debug!("Sanitizing JSON from raw text:\n{}", raw_text);
+    //app_log!(debug, "Sanitizing JSON from raw text:\n{}", raw_text);
 
     // Extract JSON using regex
     let re = Regex::new(r"\{[\s\S]*\}")?;
     let json_str = re
         .find(raw_text)
         .ok_or_else(|| {
-            error!("No JSON found in response: {}", raw_text);
+            app_log!(error, "No JSON found in response: {}", raw_text);
             "No JSON structure found in response"
         })?
         .as_str();
@@ -19,15 +19,15 @@ pub fn sanitize_json(raw_text: &str) -> Result<Value, Box<dyn Error + Send + Syn
     // Remove trailing commas before parsing
     let cleaned_json = remove_trailing_commas(json_str);
 
-    debug!("Cleaned JSON string:\n{}", cleaned_json);
+    app_log!(debug, "Cleaned JSON string:\n{}", cleaned_json);
 
     // Parse the JSON
     let parsed_json: Value = serde_json::from_str(json_str).map_err(|e| {
-        error!("Failed to parse JSON: {}\nRaw JSON string: {}", e, json_str);
+        app_log!(error, "Failed to parse JSON: {}\nRaw JSON string: {}", e, json_str);
         format!("Failed to parse JSON: {e}. Raw JSON: {json_str}")
     })?;
 
-    debug!("Successfully parsed JSON");
+    app_log!(debug, "Successfully parsed JSON");
     Ok(parsed_json)
 }
 

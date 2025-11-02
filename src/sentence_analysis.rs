@@ -7,7 +7,7 @@ use crate::workflow::classify_intent::IntentType;
 use std::sync::Arc;
 use tonic::Status;
 use tracing::Instrument;
-
+use crate::app_log;
 use crate::sentence_service::sentence::{
     IntentType as ProtoIntentType, MatchingInfo, MatchingStatus, MissingField, Parameter,
     SentenceResponse, Usage,
@@ -72,7 +72,7 @@ impl SentenceAnalyzer {
                 .unwrap_or(None)
             {
                 if tx.send(Ok(response)).await.is_err() {
-                    tracing::error!("Failed to send progressive response");
+                    app_log!(error, "Failed to send progressive response");
                 }
                 return; // Early return for progressive matching
             }
@@ -130,7 +130,7 @@ impl SentenceAnalyzer {
         conversation_manager: Arc<ConversationManager>,
         progressive_manager: Option<Arc<ProgressiveMatchingManager>>,
     ) {
-        tracing::info!(
+        app_log!(info, 
             client_id = %client_id,
             email = %email,
             conversation_id = %conversation_id,
@@ -164,7 +164,7 @@ impl SentenceAnalyzer {
             self.build_sentence_response(enhanced_result, conversation_id.clone(), model);
 
         if tx.send(Ok(response)).await.is_err() {
-            tracing::error!(
+            app_log!(error, 
                 client_id = %client_id,
                 email = %email,
                 conversation_id = %conversation_id,
@@ -182,7 +182,7 @@ impl SentenceAnalyzer {
         client_id: String,
         tx: tokio::sync::mpsc::Sender<Result<SentenceResponse, Status>>,
     ) {
-        tracing::error!(
+        app_log!(error, 
             input_sentence = %input_sentence,
             error = %error,
             client_id = %client_id,
@@ -205,7 +205,7 @@ impl SentenceAnalyzer {
         };
 
         if tx.send(Err(status)).await.is_err() {
-            tracing::error!("Failed to send error response - stream closed");
+            app_log!(error, "Failed to send error response - stream closed");
         }
     }
 
@@ -261,24 +261,24 @@ impl SentenceAnalyzer {
                         .await
                         {
                             Ok(progressive_result) => {
-                                tracing::info!(
+                                app_log!(info, 
                                 "Saved incomplete request to progressive matching: {}% complete",
                                 progressive_result.completion_percentage
                             );
                             }
                             Err(e) => {
-                                tracing::warn!("Progressive matching failed: {}", e);
+                                app_log!(warn, "Progressive matching failed: {}", e);
                             }
                         }
                     } else {
-                        tracing::error!(
+                        app_log!(error, 
                             "Endpoint {} not found for progressive matching",
                             enhanced_result.endpoint_id
                         );
                     }
                 }
                 Err(e) => {
-                    tracing::error!(
+                    app_log!(error, 
                         "Failed to get enhanced endpoints for progressive matching: {}",
                         e
                     );
@@ -306,7 +306,7 @@ impl SentenceAnalyzer {
             )
             .await
         {
-            tracing::warn!("Failed to save message to conversation history: {}", e);
+            app_log!(warn, "Failed to save message to conversation history: {}", e);
         }
     }
 
@@ -367,7 +367,7 @@ impl SentenceAnalyzer {
             json_output: match serde_json::to_string(&enhanced_result.raw_json) {
                 Ok(json) => json,
                 Err(e) => {
-                    tracing::error!(error = %e, "JSON serialization failed");
+                    app_log!(error, error = %e, "JSON serialization failed");
                     format!("{{\"error\": \"JSON serialization failed: {e}\"}}")
                 }
             },
@@ -414,7 +414,7 @@ impl SentenceAnalyzer {
         api_url: &str,
         email: &str,
     ) -> Result<Option<SentenceResponse>, Box<dyn std::error::Error + Send + Sync>> {
-        tracing::info!(
+        app_log!(info, 
             "Progressive check: conversation_id='{}', sentence='{}'",
             conversation_id,
             sentence
@@ -426,7 +426,7 @@ impl SentenceAnalyzer {
             .await
         {
             Ok(Some(ongoing_match)) => {
-                tracing::info!(
+                app_log!(info, 
                     "Found ongoing match: endpoint='{}', stored_params='{}'",
                     ongoing_match.endpoint_id,
                     ongoing_match.parameters
@@ -437,7 +437,7 @@ impl SentenceAnalyzer {
                     match crate::endpoint_client::get_enhanced_endpoints(api_url, email).await {
                         Ok(endpoints) => endpoints,
                         Err(e) => {
-                            tracing::error!("Failed to get enhanced endpoints: {}", e);
+                            app_log!(error, "Failed to get enhanced endpoints: {}", e);
                             return Err(e);
                         }
                     };
@@ -446,14 +446,14 @@ impl SentenceAnalyzer {
                     .iter()
                     .find(|e| e.id == ongoing_match.endpoint_id)
                     .ok_or_else(|| {
-                        tracing::error!(
+                        app_log!(error, 
                             "Endpoint '{}' not found in available endpoints",
                             ongoing_match.endpoint_id
                         );
                         "Endpoint not found"
                     })?;
 
-                tracing::info!(
+                app_log!(info, 
                     "Found endpoint: {} with {} parameters",
                     endpoint.name,
                     endpoint.parameters.len()
@@ -464,14 +464,14 @@ impl SentenceAnalyzer {
                     match serde_json::from_str(&ongoing_match.parameters) {
                         Ok(params) => params,
                         Err(e) => {
-                            tracing::error!("Failed to parse existing parameters: {}", e);
+                            app_log!(error, "Failed to parse existing parameters: {}", e);
                             Vec::new()
                         }
                     };
 
-                tracing::info!("Existing parameters count: {}", existing_params.len());
+                app_log!(info, "Existing parameters count: {}", existing_params.len());
                 for param in &existing_params {
-                    tracing::info!("  - {}: {}", param.name, param.value);
+                    app_log!(info, "  - {}: {}", param.name, param.value);
                 }
 
                 // NOW extract new parameters - endpoint is in scope
@@ -482,13 +482,13 @@ impl SentenceAnalyzer {
                 )
                 .await?;
 
-                tracing::info!("Extracted {} new parameters", new_params.len());
+                app_log!(info, "Extracted {} new parameters", new_params.len());
                 for param in &new_params {
-                    tracing::info!("  + {}: {}", param.name, param.value);
+                    app_log!(info, "  + {}: {}", param.name, param.value);
                 }
 
                 if new_params.is_empty() {
-                    tracing::debug!(
+                    app_log!(debug, 
                         "No parameters extracted from follow-up, treating as new request"
                     );
                     return Ok(None);
@@ -503,7 +503,7 @@ impl SentenceAnalyzer {
                     )
                     .await?;
 
-                tracing::info!(
+                app_log!(info, 
                     "Updated progressive match with {} new parameters",
                     new_params.len()
                 );
@@ -516,7 +516,7 @@ impl SentenceAnalyzer {
                     .map(|p| p.name.clone())
                     .collect();
 
-                tracing::info!("Required parameters for completion: {:?}", required_params);
+                app_log!(info, "Required parameters for completion: {:?}", required_params);
 
                 let completion_result = progressive_manager
                     .check_completion(
@@ -527,7 +527,7 @@ impl SentenceAnalyzer {
                     )
                     .await?;
 
-                tracing::info!(
+                app_log!(info, 
                     "Completion check: {}% complete, is_complete: {}, missing: {:?}",
                     completion_result.completion_percentage,
                     completion_result.is_complete,
@@ -535,7 +535,7 @@ impl SentenceAnalyzer {
                 );
 
                 if completion_result.is_complete {
-                    tracing::info!("Progressive match is complete, cleaning up");
+                    app_log!(info, "Progressive match is complete, cleaning up");
 
                     // Clean up and return complete result
                     progressive_manager
@@ -548,7 +548,7 @@ impl SentenceAnalyzer {
                         conversation_id,
                     )));
                 } else {
-                    tracing::info!(
+                    app_log!(info, 
                         "Progressive match still incomplete, returning partial response"
                     );
 
@@ -561,13 +561,13 @@ impl SentenceAnalyzer {
                 }
             }
             Ok(None) => {
-                tracing::info!(
+                app_log!(info, 
                     "No ongoing progressive match found for conversation: {}",
                     conversation_id
                 );
             }
             Err(e) => {
-                tracing::error!("Error checking for progressive match: {}", e);
+                app_log!(error, "Error checking for progressive match: {}", e);
                 // Don't fail the entire request, just continue with normal processing
             }
         }
@@ -581,8 +581,8 @@ async fn extract_parameters_from_followup(
     provider: Arc<dyn ModelProvider>,
     endpoint_parameters: &[crate::models::EndpointParameter],
 ) -> Result<Vec<ParameterValue>, Box<dyn std::error::Error + Send + Sync>> {
-    tracing::info!("🔍 Extracting parameters from: '{}'", sentence);
-    tracing::info!(
+    app_log!(info, "🔍 Extracting parameters from: '{}'", sentence);
+    app_log!(info, 
         "🔍 Available endpoint parameters: {:?}",
         endpoint_parameters
             .iter()
@@ -631,7 +631,7 @@ async fn extract_parameters_from_followup(
                             description: format!("User provided value for {key}"),
                         });
                     } else {
-                        tracing::warn!(
+                        app_log!(warn, 
                             "LLM returned invalid parameter '{}' not in endpoint specification",
                             key
                         );

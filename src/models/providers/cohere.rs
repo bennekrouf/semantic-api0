@@ -3,7 +3,7 @@ use super::{GenerationResult, ModelConfig, ModelProvider, ProviderConfig};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
-use tracing::{debug, error};
+use crate::app_log;
 
 pub struct CohereProvider {
     api_key: String,
@@ -53,7 +53,7 @@ struct CohereTokens {
 impl CohereProvider {
     pub fn new(config: &ProviderConfig) -> Self {
         if !config.enabled {
-            debug!("Creating Cohere provider, but it's disabled in config");
+            app_log!(debug, "Creating Cohere provider, but it's disabled in config");
         }
 
         Self {
@@ -72,7 +72,7 @@ impl ModelProvider for CohereProvider {
         prompt: &str,
         config: &ModelConfig,
     ) -> Result<GenerationResult, Box<dyn Error + Send + Sync>> {
-        debug!("Generating response with Cohere API");
+        app_log!(debug, "Generating response with Cohere API");
 
         let request = CohereRequest {
             model: config.cohere.clone(),
@@ -95,7 +95,7 @@ impl ModelProvider for CohereProvider {
         if !response.status().is_success() {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
-            error!(
+            app_log!(error, 
                 "Cohere request failed with status {}: {}",
                 status, error_text
             );
@@ -104,7 +104,7 @@ impl ModelProvider for CohereProvider {
 
         // Get raw JSON first for token extraction
         let response_json: serde_json::Value = response.json().await?;
-        debug!("Cohere raw response: {:?}", response_json);
+        app_log!(debug, "Cohere raw response: {:?}", response_json);
 
         let content = response_json["text"]
             .as_str()
@@ -112,7 +112,7 @@ impl ModelProvider for CohereProvider {
             .to_string();
 
         if content.trim().is_empty() {
-            error!("Received empty response from Cohere");
+            app_log!(error, "Received empty response from Cohere");
             return Err("Empty response from Cohere".into());
         }
 
@@ -120,7 +120,7 @@ impl ModelProvider for CohereProvider {
 
         // Try to extract actual token usage from Cohere response
         let usage = if let Some(meta) = response_json.get("meta") {
-            debug!("Found meta field in Cohere response");
+            app_log!(debug, "Found meta field in Cohere response");
 
             // Try new format first: meta.billed_units
             if let Some(billed_units) = meta.get("billed_units") {
@@ -133,7 +133,7 @@ impl ModelProvider for CohereProvider {
                     .and_then(|t| t.as_u64())
                     .unwrap_or(0) as u32;
 
-                debug!(
+                app_log!(debug, 
                     "Cohere billed_units: input={}, output={}",
                     input_tokens, output_tokens
                 );
@@ -148,7 +148,7 @@ impl ModelProvider for CohereProvider {
                     }
                 } else {
                     // API returned 0 tokens - use enhanced estimation
-                    debug!("Cohere returned 0 tokens, using enhanced estimation instead");
+                    app_log!(debug, "Cohere returned 0 tokens, using enhanced estimation instead");
                     let enhanced_calculator =
                         crate::utils::token_calculator::EnhancedTokenCalculator::new();
                     enhanced_calculator.calculate_usage(prompt, &content, "cohere")
@@ -165,7 +165,7 @@ impl ModelProvider for CohereProvider {
                     .and_then(|t| t.as_u64())
                     .unwrap_or(0) as u32;
 
-                debug!(
+                app_log!(debug, 
                     "Cohere tokens: input={}, output={}",
                     input_tokens, output_tokens
                 );
@@ -180,27 +180,27 @@ impl ModelProvider for CohereProvider {
                     }
                 } else {
                     // API returned 0 tokens - use enhanced estimation
-                    debug!("Cohere returned 0 tokens, using enhanced estimation instead");
+                    app_log!(debug, "Cohere returned 0 tokens, using enhanced estimation instead");
                     let enhanced_calculator =
                         crate::utils::token_calculator::EnhancedTokenCalculator::new();
                     enhanced_calculator.calculate_usage(prompt, &content, "cohere")
                 }
             } else {
-                debug!("No token information in Cohere meta, using enhanced estimation");
+                app_log!(debug, "No token information in Cohere meta, using enhanced estimation");
                 let enhanced_calculator =
                     crate::utils::token_calculator::EnhancedTokenCalculator::new();
                 enhanced_calculator.calculate_usage(prompt, &content, "cohere")
             }
         } else {
-            debug!("No meta field in Cohere response, using enhanced estimation");
+            app_log!(debug, "No meta field in Cohere response, using enhanced estimation");
             let enhanced_calculator =
                 crate::utils::token_calculator::EnhancedTokenCalculator::new();
             enhanced_calculator.calculate_usage(prompt, &content, "cohere")
         };
 
-        debug!("Cohere final token usage: {:?}", usage);
+        app_log!(debug, "Cohere final token usage: {:?}", usage);
 
-        debug!("Cohere token usage: {:?}", usage);
+        app_log!(debug, "Cohere token usage: {:?}", usage);
 
         Ok(GenerationResult { content, usage })
     }

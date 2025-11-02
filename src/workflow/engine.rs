@@ -1,7 +1,7 @@
-use crate::models::providers::ModelProvider;
-
 use super::config::RetryConfig;
 use super::{config::StepConfig, steps::WorkflowStep, WorkflowContext};
+use crate::app_log;
+use crate::models::providers::ModelProvider;
 use std::error::Error;
 use std::sync::Arc;
 
@@ -30,7 +30,7 @@ impl WorkflowEngine {
                 continue;
             }
 
-            tracing::info!("Executing step: {}", step.name());
+            app_log!(info, "Executing step: {}", step.name());
 
             let result = match &config.retry {
                 Some(retry) => {
@@ -41,7 +41,7 @@ impl WorkflowEngine {
             };
 
             if let Err(e) = result {
-                tracing::error!("Step {} failed: {}", step.name(), e);
+                app_log!(error, "Step {} failed: {}", step.name(), e);
                 return Err(e);
             }
         }

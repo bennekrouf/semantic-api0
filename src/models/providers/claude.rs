@@ -3,7 +3,7 @@ use super::{GenerationResult, ModelConfig, ModelProvider, ProviderConfig, TokenC
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
-use tracing::{debug, error, info};
+use crate::app_log;
 
 pub struct ClaudeProvider {
     api_key: String,
@@ -38,7 +38,7 @@ struct ContentItem {
 impl ClaudeProvider {
     pub fn new(config: &ProviderConfig) -> Self {
         if !config.enabled {
-            debug!("Creating Claude provider, but it's disabled in config");
+            app_log!(debug, "Creating Claude provider, but it's disabled in config");
         }
 
         Self {
@@ -57,7 +57,7 @@ impl ModelProvider for ClaudeProvider {
         prompt: &str,
         config: &ModelConfig,
     ) -> Result<GenerationResult, Box<dyn Error + Send + Sync>> {
-        debug!("Generating response with Claude API");
+        app_log!(debug, "Generating response with Claude API");
 
         let request = ClaudeRequest {
             model: config.claude.clone(),
@@ -82,7 +82,7 @@ impl ModelProvider for ClaudeProvider {
         if !response.status().is_success() {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
-            error!(
+            app_log!(error, 
                 "Claude request failed with status {}: {}",
                 status, error_text
             );
@@ -98,14 +98,14 @@ impl ModelProvider for ClaudeProvider {
             .to_string();
 
         if content.trim().is_empty() {
-            error!("Received empty response from Claude");
+            app_log!(error, "Received empty response from Claude");
             return Err("Empty response from Claude".into());
         }
 
         let counter = TokenCounter::new();
         let usage = counter.from_api_response(&response_json, prompt, &content, "claude");
 
-        info!("Successfully received response from Claude API");
+        app_log!(info, "Successfully received response from Claude API");
         Ok(GenerationResult { content, usage })
     }
 

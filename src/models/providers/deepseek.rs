@@ -3,7 +3,7 @@ use super::{GenerationResult, ModelConfig, ModelProvider, ProviderConfig, TokenC
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
-use tracing::{debug, error, info};
+use crate::app_log;
 
 pub struct DeepSeekProvider {
     api_key: String,
@@ -50,7 +50,7 @@ struct Usage {
 impl DeepSeekProvider {
     pub fn new(config: &ProviderConfig) -> Self {
         if !config.enabled {
-            debug!("Creating DeepSeek provider, but it's disabled in config");
+            app_log!(debug, "Creating DeepSeek provider, but it's disabled in config");
         }
 
         Self {
@@ -70,7 +70,7 @@ impl ModelProvider for DeepSeekProvider {
         prompt: &str,
         config: &ModelConfig,
     ) -> Result<GenerationResult, Box<dyn Error + Send + Sync>> {
-        debug!("Generating response with DeepSeek API");
+        app_log!(debug, "Generating response with DeepSeek API");
 
         let request = DeepSeekRequest {
             model: config.deepseek.clone(),
@@ -94,7 +94,7 @@ impl ModelProvider for DeepSeekProvider {
         if !response.status().is_success() {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
-            error!(
+            app_log!(error, 
                 "DeepSeek request failed with status {}: {}",
                 status, error_text
             );
@@ -115,13 +115,13 @@ impl ModelProvider for DeepSeekProvider {
             .clone();
 
         if content.trim().is_empty() {
-            error!("Received empty response from DeepSeek");
+            app_log!(error, "Received empty response from DeepSeek");
             return Err("Empty response from DeepSeek".into());
         }
 
         let counter = TokenCounter::new();
         let usage = if let Some(usage_data) = deepseek_response.usage {
-            debug!("DeepSeek actual token usage: {:?}", usage_data);
+            app_log!(debug, "DeepSeek actual token usage: {:?}", usage_data);
             crate::models::providers::token_counter::TokenUsage {
                 input_tokens: usage_data.prompt_tokens,
                 output_tokens: usage_data.completion_tokens,
@@ -129,13 +129,13 @@ impl ModelProvider for DeepSeekProvider {
                 estimated: false,
             }
         } else {
-            debug!("No usage data from DeepSeek, using estimation");
+            app_log!(debug, "No usage data from DeepSeek, using estimation");
             counter.from_response(&content, prompt, "deepseek")
         };
 
-        debug!("DeepSeek final token usage: {:?}", usage);
+        app_log!(debug, "DeepSeek final token usage: {:?}", usage);
 
-        info!("Successfully received response from DeepSeek API");
+        app_log!(info, "Successfully received response from DeepSeek API");
         Ok(GenerationResult { content, usage })
     }
 

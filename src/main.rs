@@ -2,7 +2,7 @@
 mod analyze_sentence;
 mod cli;
 mod comparison_test;
-mod conversation; // Add this new module
+mod conversation;
 mod endpoint_client;
 mod general_question_handler;
 mod grpc_server;
@@ -26,25 +26,15 @@ use grpc_server::start_sentence_grpc_server;
 use std::env;
 use std::error::Error;
 use tokio::signal;
-use tracing::{error, info};
-use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::{EnvFilter, Registry};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
-    // let config_path = std::env::var("CONFIG_PATH").unwrap_or_else(|_| "config.yaml".to_string());
-
+    init_logging!("/var/log/api0.log", "api0", "semantic");
     let args: Vec<String> = std::env::args().collect();
     if args.len() <= 1 {
         display_custom_help();
         std::process::exit(0);
     }
-
-    Registry::default()
-        .with(tracing_subscriber::fmt::layer().json())
-        .with(EnvFilter::try_from_default_env().unwrap_or(EnvFilter::new("INFO")))
-        .init();
 
     let cli = match Cli::try_parse() {
         Ok(cli) => cli,
@@ -73,7 +63,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let provider: Box<dyn ModelProvider> = match cli.provider.as_str() {
         "cohere" => match env::var("COHERE_API_KEY") {
             Ok(api_key) => {
-                info!("Using Cohere API");
+                app_log!(info, "Using Cohere API");
                 let config = ProviderConfig {
                     enabled: true,
                     api_key: Some(api_key),
@@ -81,13 +71,16 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
                 create_provider(&config, "cohere").expect("Failed to create Cohere provider")
             }
             Err(_) => {
-                error!("Cohere API key not found in .env file. Please add COHERE_API_KEY to .env");
+                app_log!(
+                    error,
+                    "Cohere API key not found in .env file. Please add COHERE_API_KEY to .env"
+                );
                 std::process::exit(1);
             }
         },
         "claude" => match env::var("CLAUDE_API_KEY") {
             Ok(api_key) => {
-                info!("Using Claude API");
+                app_log!(info, "Using Claude API");
                 let config = ProviderConfig {
                     enabled: true,
                     api_key: Some(api_key),
@@ -95,13 +88,16 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
                 create_provider(&config, "claude").expect("Failed to create Claude provider")
             }
             Err(_) => {
-                error!("Claude API key not found in .env file. Please add CLAUDE_API_KEY to .env");
+                app_log!(
+                    error,
+                    "Claude API key not found in .env file. Please add CLAUDE_API_KEY to .env"
+                );
                 std::process::exit(1);
             }
         },
         "deepseek" => match env::var("DEEPSEEK_API_KEY") {
             Ok(api_key) => {
-                info!("Using DeepSeek API");
+                app_log!(info, "Using DeepSeek API");
                 let config = ProviderConfig {
                     enabled: true,
                     api_key: Some(api_key),
@@ -109,14 +105,16 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
                 create_provider(&config, "deepseek").expect("Failed to create DeepSeek provider")
             }
             Err(_) => {
-                error!(
+                app_log!(
+                    error,
                     "DeepSeek API key not found in .env file. Please add DEEPSEEK_API_KEY to .env"
                 );
                 std::process::exit(1);
             }
         },
         _ => {
-            error!(
+            app_log!(
+                error,
                 "Invalid provider: {}. Use 'cohere' or 'claude'",
                 cli.provider
             );
@@ -135,7 +133,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
             match get_default_api_url().await {
                 Ok(url) => Some(url),
                 Err(e) => {
-                    error!("Failed to get default API URL: {}", e);
+                    app_log!(error, "Failed to get default API URL: {}", e);
                     None
                 }
             }
@@ -150,28 +148,31 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         handle_cli(cli, provider_arc).await?;
     } else {
         // Server mode - email is not needed
-        info!("No command provided, starting gRPC server with conversation management...");
+        app_log!(
+            info,
+            "No command provided, starting gRPC server with conversation management..."
+        );
 
         let grpc_server = tokio::spawn(async move {
             if let Err(e) = start_sentence_grpc_server(provider_arc.clone(), api_url).await {
-                error!("gRPC server error: {:?}", e);
+                app_log!(error, "gRPC server error: {:?}", e);
             }
         });
 
-        info!("Semantic server started with conversation management");
+        app_log!(info, "Semantic server started with conversation management");
 
         tokio::select! {
             _ = signal::ctrl_c() => {
-                info!("Received shutdown signal, initiating graceful shutdown...");
+                app_log!(info, "Received shutdown signal, initiating graceful shutdown...");
             }
             result = grpc_server => {
                 if let Err(e) = result {
-                    error!("gRPC server task error: {:?}", e);
+                    app_log!(error, "gRPC server task error: {:?}", e);
                 }
             }
         }
 
-        info!("Server shutting down");
+        app_log!(info, "Server shutting down");
     }
 
     Ok(())
