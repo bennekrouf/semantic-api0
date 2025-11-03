@@ -5,8 +5,8 @@ use crate::models::providers::ModelProvider;
 use crate::progressive_matching::{ParameterValue, ProgressiveMatchingManager};
 use crate::workflow::classify_intent::IntentType;
 use std::sync::Arc;
+use graflog::app_span;
 use tonic::Status;
-use tracing::Instrument;
 use crate::app_log;
 use crate::sentence_service::sentence::{
     IntentType as ProtoIntentType, MatchingInfo, MatchingStatus, MissingField, Parameter,
@@ -44,12 +44,14 @@ impl SentenceAnalyzer {
         client_id: String,
         tx: tokio::sync::mpsc::Sender<Result<SentenceResponse, Status>>,
     ) {
-        let analyze_span = tracing::info_span!(
+        let analyze_span = app_span!(
             "analyze_sentence",
             client_id = %client_id,
             email = %email,
             conversation_id = %conversation_id
         );
+
+        let _enter = analyze_span.enter();
 
         let model = self.provider.get_model_name().to_string();
         let provider_clone = self.provider.clone();
@@ -86,7 +88,6 @@ impl SentenceAnalyzer {
             &email,
             Some(conversation_id.clone()),
         )
-        .instrument(analyze_span)
         .await;
 
         match result {

@@ -108,7 +108,6 @@ impl SentenceService for SentenceAnalyzeService {
     type AnalyzeSentenceStream =
         Pin<Box<dyn Stream<Item = Result<SentenceResponse, Status>> + Send>>;
 
-    #[tracing::instrument(skip(self, request), fields(client_id, email, conversation_id))]
     async fn analyze_sentence(
         &self,
         request: Request<SentenceRequest>,
