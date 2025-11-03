@@ -8,6 +8,8 @@ use std::{error::Error, sync::Arc};
 // use async_trait::async_trait;
 
 use crate::models::Endpoint;
+
+#[allow(dead_code)]
 pub struct JsonGenerationStep {}
 
 // Trait defining a workflow step

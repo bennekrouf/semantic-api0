@@ -31,7 +31,14 @@ use tokio::signal;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
-    init_logging!("/var/log/api0.log", "api0", "semantic");
+    if env::var("LOG_PATH_API0").is_err() {
+        eprintln!("Error: LOG_PATH_API0 environment variable is required");
+        std::process::exit(1);
+    }
+
+    let log_path = env::var("LOG_PATH_API0").unwrap_or_else(|_| "/var/log/api0.log".to_string());
+    init_logging!(&log_path, "api0", "semantic");
+
     let args: Vec<String> = std::env::args().collect();
     if args.len() <= 1 {
         display_custom_help();
