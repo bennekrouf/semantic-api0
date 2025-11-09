@@ -1,3 +1,4 @@
+use crate::app_log;
 use crate::endpoint_client::{check_endpoint_service_health, get_enhanced_endpoints};
 use crate::general_question_handler::handle_general_question;
 use crate::help_response_handler::handle_help_request;
@@ -11,9 +12,8 @@ use crate::workflow::classify_intent::IntentType;
 use crate::workflow::find_closest_endpoint::find_closest_endpoint;
 use crate::workflow::match_fields::match_fields_semantic;
 use crate::workflow::sentence_to_json::sentence_to_json;
-use crate::workflow::{WorkflowConfig, WorkflowContext, WorkflowEngine, WorkflowStep};
-
-use crate::app_log;
+use crate::workflow::WorkflowStep;
+use crate::workflow::{WorkflowConfig, WorkflowContext, WorkflowEngine};
 use async_trait::async_trait;
 use std::error::Error;
 use std::sync::Arc;
