@@ -1,10 +1,10 @@
+use crate::app_log;
 use crate::json_helper::sanitize_json;
 use crate::models::config::load_models_config;
 use crate::models::providers::ModelProvider;
 use crate::models::EnhancedEndpoint;
 use crate::prompts::PromptManager;
 use std::{error::Error, sync::Arc};
-use crate::app_log;
 
 pub async fn sentence_to_json(
     sentence: &str,
@@ -19,7 +19,8 @@ pub async fn sentence_to_json(
     let result = provider.generate(&full_prompt, model_config).await?;
 
     // Log token usage
-    app_log!(debug, 
+    app_log!(
+        debug,
         provider = provider.get_model_name(),
         estimated = result.usage.estimated,
         input_tokens = result.usage.input_tokens,
@@ -55,13 +56,14 @@ pub async fn sentence_to_json(
     Ok(parsed_json)
 }
 
-// New structured parameter extraction function using v2 prompt
+// // New structured parameter extraction function using v2 prompt
 pub async fn sentence_to_json_structured(
     sentence: &str,
     endpoint: &EnhancedEndpoint,
     provider: Arc<dyn ModelProvider>,
 ) -> Result<serde_json::Value, Box<dyn Error + Send + Sync>> {
-    app_log!(info, 
+    app_log!(
+        info,
         "Starting structured parameter extraction for endpoint: {}",
         endpoint.id
     );
@@ -111,7 +113,8 @@ pub async fn sentence_to_json_structured(
     let model_config = &models_config.default;
 
     let result = provider.generate(&full_prompt, model_config).await?;
-    app_log!(debug, 
+    app_log!(
+        debug,
         "Raw LLM response for structured extraction:\n{:?}",
         result.content
     );
@@ -122,7 +125,10 @@ pub async fn sentence_to_json_structured(
 
     // Validate that we got an object (not the old endpoints array format)
     if !parsed_json.is_object() {
-        app_log!(error, "Invalid JSON structure: expected object with parameter values");
+        app_log!(
+            error,
+            "Invalid JSON structure: expected object with parameter values"
+        );
         return Err("Invalid JSON structure: expected object with parameter values".into());
     }
 
@@ -136,7 +142,8 @@ pub async fn sentence_to_json_structured(
 
         for key in obj.keys() {
             if !known_param_names.contains(&key.as_str()) {
-                app_log!(debug, 
+                app_log!(
+                    debug,
                     "Warning: LLM returned unknown parameter '{}', ignoring",
                     key
                 );
@@ -152,13 +159,17 @@ pub async fn sentence_to_json_structured(
         }
 
         let filtered_json = serde_json::Value::Object(filtered_obj.clone());
-        app_log!(info, 
+        app_log!(
+            info,
             "Successfully extracted and validated {} parameters",
             filtered_obj.len()
         );
         return Ok(filtered_json);
     }
 
-    app_log!(info, "Successfully completed structured parameter extraction");
+    app_log!(
+        info,
+        "Successfully completed structured parameter extraction"
+    );
     Ok(parsed_json)
 }

@@ -28,6 +28,7 @@ use grpc_server::start_sentence_grpc_server;
 use std::env;
 use std::error::Error;
 use tokio::signal;
+use graflog::LogOption;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -37,7 +38,10 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     }
 
     let log_path = env::var("LOG_PATH_API0").unwrap_or_else(|_| "/var/log/api0.log".to_string());
-    init_logging!(&log_path, "api0", "semantic", "debug,rocket::server=off");
+    init_logging!(&log_path, "api0", "semantic", &[
+        LogOption::Debug,
+        LogOption::RocketOff
+    ]);
 
     let args: Vec<String> = std::env::args().collect();
     if args.len() <= 1 {

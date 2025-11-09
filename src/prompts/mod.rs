@@ -1,8 +1,8 @@
+use crate::app_log;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::env;
 use std::error::Error;
-use crate::app_log;
 
 #[derive(Debug, Deserialize)]
 struct PromptVersion {
@@ -81,9 +81,11 @@ impl PromptManager {
         match prompt_versions.versions.get(version_key) {
             Some(version) => Some(&version.template),
             None => {
-                app_log!(warn, 
+                app_log!(
+                    warn,
                     "Prompt version {} not found for {}, falling back to default",
-                    version_key, name
+                    version_key,
+                    name
                 );
                 prompt_versions
                     .versions

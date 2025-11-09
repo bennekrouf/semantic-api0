@@ -3,6 +3,7 @@ use super::find_closest_endpoint::find_closest_endpoint;
 use crate::models::{ConfigFile, EnhancedEndpoint};
 use crate::workflow::context::WorkflowContext;
 // use crate::workflow::find_closest_endpoint::find_closest_endpoint_pure_llm;
+use crate::workflow::sentence_to_json::sentence_to_json_structured;
 use std::{error::Error, sync::Arc};
 
 // use async_trait::async_trait;
@@ -34,7 +35,7 @@ impl WorkflowStep for JsonGenerationStep {
                 // Find the specific endpoint
                 if let Some(endpoint) = enhanced_endpoints.iter().find(|e| e.id == *endpoint_id) {
                     // Use structured extraction with known endpoint
-                    crate::workflow::sentence_to_json::sentence_to_json_structured(
+                    sentence_to_json_structured(
                         &context.sentence,
                         endpoint,
                         context.provider.clone(),
