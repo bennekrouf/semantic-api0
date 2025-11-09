@@ -20,7 +20,6 @@ tokio-stream = "0.1.17"
 futures = "0.3.31"
 clap = { version = "4.5.30", features = ["derive"] }
 async-trait = "0.1.86"
-dotenv = "0.15.0"
 h2 = "0.4.10"
 env = "1.0.1"
 uuid = { version = "1.18.1", features = ["v4", "serde"] }

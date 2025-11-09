@@ -2,9 +2,9 @@ use crate::endpoint_client::{check_endpoint_service_health, get_enhanced_endpoin
 use crate::general_question_handler::handle_general_question;
 use crate::help_response_handler::handle_help_request;
 use crate::models::providers::ModelProvider;
-use crate::models::{
-    EnhancedAnalysisResult, MatchingInfo, MatchingStatus, MissingField, ParameterMatch, UsageInfo,
-};
+use crate::models::EnhancedAnalysisResult;
+use crate::models::{MatchingInfo, MatchingStatus, MissingField, ParameterMatch, UsageInfo};
+use crate::progressive_matching::ProgressiveMatchingManager;
 use crate::utils::email::validate_email;
 use crate::workflow::actions::classify_intent::classify_intent;
 use crate::workflow::classify_intent::IntentType;
@@ -13,12 +13,10 @@ use crate::workflow::match_fields::match_fields_semantic;
 use crate::workflow::sentence_to_json::sentence_to_json;
 use crate::workflow::{WorkflowConfig, WorkflowContext, WorkflowEngine, WorkflowStep};
 
-use crate::progressive_matching::ProgressiveMatchingManager;
-
+use crate::app_log;
 use async_trait::async_trait;
 use std::error::Error;
 use std::sync::Arc;
-use crate::app_log;
 
 // Enhanced configuration loading step that extends the existing workflow
 pub struct EnhancedConfigurationLoadingStep {
@@ -32,7 +30,10 @@ impl WorkflowStep for EnhancedConfigurationLoadingStep {
         &self,
         context: &mut WorkflowContext,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        app_log!(info, "Loading enhanced configurations with complete endpoint metadata");
+        app_log!(
+            info,
+            "Loading enhanced configurations with complete endpoint metadata"
+        );
 
         if self.email.is_empty() {
             return Err("Email is required and cannot be empty".into());
@@ -45,7 +46,10 @@ impl WorkflowStep for EnhancedConfigurationLoadingStep {
 
         match check_endpoint_service_health(api_url).await {
             Ok(true) => {
-                app_log!(info, "Remote endpoint service available, fetching enhanced endpoints");
+                app_log!(
+                    info,
+                    "Remote endpoint service available, fetching enhanced endpoints"
+                );
 
                 match get_enhanced_endpoints(api_url, &self.email).await {
                     Ok(enhanced_endpoints) => {
@@ -75,7 +79,8 @@ impl WorkflowStep for EnhancedConfigurationLoadingStep {
                         // Store enhanced endpoints for later use
                         context.enhanced_endpoints = Some(enhanced_endpoints);
 
-                        app_log!(info, 
+                        app_log!(
+                            info,
                             "Successfully loaded {} enhanced endpoints",
                             context.enhanced_endpoints.as_ref().unwrap().len()
                         );
@@ -129,9 +134,11 @@ impl WorkflowStep for JsonGenerationStep {
         context.total_input_tokens += step_usage.input_tokens;
         context.total_output_tokens += step_usage.output_tokens;
 
-        app_log!(debug, 
+        app_log!(
+            debug,
             "JSON generation step added {} input tokens, {} output tokens",
-            step_usage.input_tokens, step_usage.output_tokens
+            step_usage.input_tokens,
+            step_usage.output_tokens
         );
 
         Ok(())
@@ -170,9 +177,11 @@ impl WorkflowStep for EndpointMatchingStep {
         context.total_input_tokens += step_usage.input_tokens;
         context.total_output_tokens += step_usage.output_tokens;
 
-        app_log!(debug, 
+        app_log!(
+            debug,
             "Endpoint matching step added {} input tokens, {} output tokens",
-            step_usage.input_tokens, step_usage.output_tokens
+            step_usage.input_tokens,
+            step_usage.output_tokens
         );
 
         Ok(())
@@ -233,9 +242,11 @@ impl WorkflowStep for FieldMatchingStep {
         context.total_input_tokens += step_usage.input_tokens;
         context.total_output_tokens += step_usage.output_tokens;
 
-        app_log!(debug, 
+        app_log!(
+            debug,
             "Field matching step added {} input tokens, {} output tokens",
-            step_usage.input_tokens, step_usage.output_tokens
+            step_usage.input_tokens,
+            step_usage.output_tokens
         );
 
         Ok(())
@@ -257,9 +268,12 @@ async fn analyze_with_retry(
     let mut last_error = None;
 
     for attempt in 1..=retry_attempts {
-        app_log!(info, 
+        app_log!(
+            info,
             "Analysis attempt {}/{} for: {}",
-            attempt, retry_attempts, sentence
+            attempt,
+            retry_attempts,
+            sentence
         );
 
         match try_actionable_analysis(
@@ -280,9 +294,11 @@ async fn analyze_with_retry(
                 if error_msg.contains("No suitable endpoint found")
                     || error_msg.contains("not found in available endpoints")
                 {
-                    app_log!(warn, 
+                    app_log!(
+                        warn,
                         "Endpoint matching failed on attempt {}: {}",
-                        attempt, error_msg
+                        attempt,
+                        error_msg
                     );
                     last_error = Some(e);
 
@@ -404,7 +420,10 @@ steps:
 
     // If workflow didn't track tokens properly, estimate them based on the sentence and response
     let (final_input_tokens, final_output_tokens) = if context.total_output_tokens == 0 {
-        app_log!(debug, "Workflow reported 0 output tokens, estimating output tokens");
+        app_log!(
+            debug,
+            "Workflow reported 0 output tokens, estimating output tokens"
+        );
 
         let enhanced_calculator = crate::utils::token_calculator::EnhancedTokenCalculator::new();
 
@@ -480,9 +499,12 @@ steps:
         estimated: true, // Workflow aggregates multiple calls, so mark as estimated
     };
 
-    app_log!(debug, 
+    app_log!(
+        debug,
         "Final workflow token usage: input={}, output={}, total={}",
-        usage_info.input_tokens, usage_info.output_tokens, usage_info.total_tokens
+        usage_info.input_tokens,
+        usage_info.output_tokens,
+        usage_info.total_tokens
     );
 
     // Return enhanced result with complete endpoint metadata
@@ -526,9 +548,11 @@ pub async fn analyze_sentence_enhanced(
         .await
         .unwrap_or_default();
 
-    app_log!(info, 
+    app_log!(
+        info,
         "Starting enhanced sentence analysis with {} retry attempts for: {}",
-        analysis_config.retry_attempts, sentence
+        analysis_config.retry_attempts,
+        sentence
     );
 
     let api_url_ref = api_url.as_ref().ok_or("No API URL provided")?;
@@ -536,7 +560,8 @@ pub async fn analyze_sentence_enhanced(
     // STEP 1: PROGRESSIVE MATCHING CHECK (HIGHEST PRIORITY)
     // If we have a conversation_id, check for ongoing requests FIRST
     if let Some(ref conv_id) = conversation_id {
-        app_log!(info, 
+        app_log!(
+            info,
             "Checking for ongoing progressive match for conversation: {}",
             conv_id
         );
@@ -546,7 +571,8 @@ pub async fn analyze_sentence_enhanced(
                 // Check if there's an ongoing incomplete match
                 match progressive_manager.get_incomplete_match(conv_id).await {
                     Ok(Some(ongoing_match)) => {
-                        app_log!(info, 
+                        app_log!(
+                            info,
                             "Found ongoing progressive match for endpoint: {}",
                             ongoing_match.endpoint_id
                         );
@@ -568,7 +594,8 @@ pub async fn analyze_sentence_enhanced(
                                 return Ok(progressive_result);
                             }
                             Err(e) => {
-                                app_log!(warn, 
+                                app_log!(
+                                    warn,
                                     "Progressive matching failed: {}, continuing with normal flow",
                                     e
                                 );
@@ -577,13 +604,15 @@ pub async fn analyze_sentence_enhanced(
                         }
                     }
                     Ok(None) => {
-                        app_log!(debug, 
+                        app_log!(
+                            debug,
                             "No ongoing progressive match found for conversation: {}",
                             conv_id
                         );
                     }
                     Err(e) => {
-                        app_log!(warn, 
+                        app_log!(
+                            warn,
                             "Error checking for progressive match: {}, continuing with normal flow",
                             e
                         );
@@ -595,7 +624,10 @@ pub async fn analyze_sentence_enhanced(
 
     // STEP 2: NORMAL FLOW (Intent Classification + Endpoint Matching)
     // Only reached if no progressive match was found or it failed
-    app_log!(info, "No progressive match found, proceeding with normal analysis flow");
+    app_log!(
+        info,
+        "No progressive match found, proceeding with normal analysis flow"
+    );
 
     let enhanced_endpoints = get_enhanced_endpoints(api_url_ref, email).await?;
     let endpoint_descriptions: Vec<String> = enhanced_endpoints
@@ -621,7 +653,8 @@ pub async fn analyze_sentence_enhanced(
                 Ok(result) => Ok(result),
                 Err(e) => {
                     if analysis_config.fallback_to_general {
-                        app_log!(warn, 
+                        app_log!(
+                            warn,
                             "All retries failed, falling back to general question handler: {}",
                             e
                         );
@@ -655,7 +688,8 @@ async fn handle_progressive_followup(
     api_url: &str,
     email: &str,
 ) -> Result<EnhancedAnalysisResult, Box<dyn Error + Send + Sync>> {
-    app_log!(info, 
+    app_log!(
+        info,
         "Processing progressive follow-up for endpoint: {}",
         ongoing_match.endpoint_id
     );
@@ -667,7 +701,8 @@ async fn handle_progressive_followup(
         .find(|e| e.id == ongoing_match.endpoint_id)
         .ok_or_else(|| format!("Endpoint {} not found", ongoing_match.endpoint_id))?;
 
-    app_log!(info, 
+    app_log!(
+        info,
         "Found endpoint: {} with {} parameters",
         endpoint.name,
         endpoint.parameters.len()
@@ -677,7 +712,8 @@ async fn handle_progressive_followup(
     let new_parameters =
         extract_parameters_from_followup(sentence, provider.clone(), &endpoint.parameters).await?;
 
-    app_log!(info, 
+    app_log!(
+        info,
         "Extracted {} new parameters from follow-up",
         new_parameters.len()
     );
@@ -712,9 +748,11 @@ async fn handle_progressive_followup(
         )
         .await?;
 
-    app_log!(info, 
+    app_log!(
+        info,
         "Progressive matching completion: {}% complete, is_complete: {}",
-        completion_result.completion_percentage, completion_result.is_complete
+        completion_result.completion_percentage,
+        completion_result.is_complete
     );
 
     if completion_result.is_complete {
@@ -731,7 +769,10 @@ async fn handle_progressive_followup(
         )
         .await
     } else {
-        app_log!(info, "Progressive matching still incomplete, prompting for more parameters");
+        app_log!(
+            info,
+            "Progressive matching still incomplete, prompting for more parameters"
+        );
         create_partial_progressive_response(
             endpoint,
             completion_result,
@@ -1117,4 +1158,27 @@ async fn create_general_response(
         usage: usage_info,
         intent: IntentType::GeneralQuestion,
     })
+}
+
+pub fn create_default_matching_info() -> MatchingInfo {
+    MatchingInfo {
+        status: MatchingStatus::Complete,
+        total_required_fields: 0,
+        mapped_required_fields: 0,
+        total_optional_fields: 0,
+        mapped_optional_fields: 0,
+        completion_percentage: 100.0,
+        missing_required_fields: vec![],
+        missing_optional_fields: vec![],
+    }
+}
+
+pub fn create_usage_info(input: u32, output: u32, model: String, estimated: bool) -> UsageInfo {
+    UsageInfo {
+        input_tokens: input,
+        output_tokens: output,
+        total_tokens: input + output,
+        model,
+        estimated,
+    }
 }

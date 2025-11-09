@@ -1,7 +1,7 @@
 pub mod actions;
 mod config;
 pub mod context;
-mod engine;
+pub mod engine;
 mod steps;
 
 pub use actions::*;

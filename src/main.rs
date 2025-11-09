@@ -1,4 +1,4 @@
-// src/main.rs - Updated with conversation management
+// src/main.rs - Updated with helpers and dead code removed
 mod analyze_sentence;
 mod cli;
 mod comparison_test;
@@ -11,24 +11,82 @@ mod json_helper;
 mod models;
 mod progressive_matching;
 mod prompts;
+mod sentence_analysis;
 mod sentence_service;
 mod utils;
 mod workflow;
+
 use crate::models::config::load_models_config;
 use crate::models::providers::{create_provider, ModelProvider, ProviderConfig};
-use std::sync::Arc;
-mod sentence_analysis;
 use clap::Parser;
 use cli::{display_custom_help, handle_cli, Cli};
-use dotenv::dotenv;
 use endpoint_client::get_default_api_url;
 use graflog::app_log;
 use graflog::init_logging;
+use graflog::LogOption;
 use grpc_server::start_sentence_grpc_server;
 use std::env;
 use std::error::Error;
+use std::sync::Arc;
 use tokio::signal;
-use graflog::LogOption;
+
+fn create_provider_with_key(provider_type: &str) -> Result<Box<dyn ModelProvider>, String> {
+    match provider_type {
+        "cohere" => match env::var("COHERE_API_KEY") {
+            Ok(api_key) => {
+                app_log!(info, "Using Cohere API");
+                let config = ProviderConfig {
+                    enabled: true,
+                    api_key: Some(api_key),
+                };
+                create_provider(&config, "cohere")
+                    .ok_or_else(|| "Failed to create Cohere provider".to_string())
+            }
+            Err(_) => {
+                app_log!(error, "COHERE_API_KEY environment variable not found");
+                Err("Cohere API key not found".to_string())
+            }
+        },
+        "claude" => match env::var("CLAUDE_API_KEY") {
+            Ok(api_key) => {
+                app_log!(info, "Using Claude API");
+                let config = ProviderConfig {
+                    enabled: true,
+                    api_key: Some(api_key),
+                };
+                create_provider(&config, "claude")
+                    .ok_or_else(|| "Failed to create Claude provider".to_string())
+            }
+            Err(_) => {
+                app_log!(error, "CLAUDE_API_KEY environment variable not found");
+                Err("Claude API key not found".to_string())
+            }
+        },
+        "deepseek" => match env::var("DEEPSEEK_API_KEY") {
+            Ok(api_key) => {
+                app_log!(info, "Using DeepSeek API");
+                let config = ProviderConfig {
+                    enabled: true,
+                    api_key: Some(api_key),
+                };
+                create_provider(&config, "deepseek")
+                    .ok_or_else(|| "Failed to create DeepSeek provider".to_string())
+            }
+            Err(_) => {
+                app_log!(error, "DEEPSEEK_API_KEY environment variable not found");
+                Err("DeepSeek API key not found".to_string())
+            }
+        },
+        _ => {
+            app_log!(
+                error,
+                "Invalid provider: {}. Use 'cohere', 'claude', or 'deepseek'",
+                provider_type
+            );
+            Err(format!("Invalid provider: {}", provider_type))
+        }
+    }
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -38,10 +96,12 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     }
 
     let log_path = env::var("LOG_PATH_API0").unwrap_or_else(|_| "/var/log/api0.log".to_string());
-    init_logging!(&log_path, "api0", "semantic", &[
-        LogOption::Debug,
-        LogOption::RocketOff
-    ]);
+    init_logging!(
+        &log_path,
+        "api0",
+        "semantic",
+        &[LogOption::Debug, LogOption::RocketOff]
+    );
 
     let args: Vec<String> = std::env::args().collect();
     if args.len() <= 1 {
@@ -71,66 +131,10 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 
     let _models_config = load_models_config().await?;
 
-    dotenv().ok();
-
-    let provider: Box<dyn ModelProvider> = match cli.provider.as_str() {
-        "cohere" => match env::var("COHERE_API_KEY") {
-            Ok(api_key) => {
-                app_log!(info, "Using Cohere API");
-                let config = ProviderConfig {
-                    enabled: true,
-                    api_key: Some(api_key),
-                };
-                create_provider(&config, "cohere").expect("Failed to create Cohere provider")
-            }
-            Err(_) => {
-                app_log!(
-                    error,
-                    "Cohere API key not found in .env file. Please add COHERE_API_KEY to .env"
-                );
-                std::process::exit(1);
-            }
-        },
-        "claude" => match env::var("CLAUDE_API_KEY") {
-            Ok(api_key) => {
-                app_log!(info, "Using Claude API");
-                let config = ProviderConfig {
-                    enabled: true,
-                    api_key: Some(api_key),
-                };
-                create_provider(&config, "claude").expect("Failed to create Claude provider")
-            }
-            Err(_) => {
-                app_log!(
-                    error,
-                    "Claude API key not found in .env file. Please add CLAUDE_API_KEY to .env"
-                );
-                std::process::exit(1);
-            }
-        },
-        "deepseek" => match env::var("DEEPSEEK_API_KEY") {
-            Ok(api_key) => {
-                app_log!(info, "Using DeepSeek API");
-                let config = ProviderConfig {
-                    enabled: true,
-                    api_key: Some(api_key),
-                };
-                create_provider(&config, "deepseek").expect("Failed to create DeepSeek provider")
-            }
-            Err(_) => {
-                app_log!(
-                    error,
-                    "DeepSeek API key not found in .env file. Please add DEEPSEEK_API_KEY to .env"
-                );
-                std::process::exit(1);
-            }
-        },
-        _ => {
-            app_log!(
-                error,
-                "Invalid provider: {}. Use 'cohere' or 'claude'",
-                cli.provider
-            );
+    let provider: Box<dyn ModelProvider> = match create_provider_with_key(&cli.provider) {
+        Ok(provider) => provider,
+        Err(e) => {
+            eprintln!("Provider error: {}", e);
             std::process::exit(1);
         }
     };
