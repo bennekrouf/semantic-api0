@@ -16,6 +16,7 @@ pub struct WorkflowContext {
     pub models_config: Option<ModelsConfig>,
     pub endpoints_config: Option<ConfigFile>,
     pub enhanced_endpoints: Option<Vec<EnhancedEndpoint>>,
+
     // Processing state
     pub json_output: Option<Value>,
     pub matched_endpoint: Option<Endpoint>,

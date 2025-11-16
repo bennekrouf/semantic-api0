@@ -2,7 +2,8 @@
 use crate::analyze_sentence::analyze_sentence_enhanced;
 use crate::conversation::ConversationManager;
 use crate::models::providers::ModelProvider;
-use crate::progressive_matching::{ParameterValue, ProgressiveMatchingManager};
+use crate::models::EnhancedAnalysisResult;
+use crate::progressive_matching::{integrate_progressive_matching, ParameterValue, ProgressiveMatchingManager};
 use crate::workflow::classify_intent::IntentType;
 use std::sync::Arc;
 use graflog::app_span;
@@ -251,7 +252,7 @@ impl SentenceAnalyzer {
                             })
                             .collect();
 
-                        match crate::progressive_matching::integrate_progressive_matching(
+                        match integrate_progressive_matching(
                             conversation_id,
                             &enhanced_result.endpoint_id,
                             new_parameters,
@@ -290,7 +291,7 @@ impl SentenceAnalyzer {
 
     async fn save_to_conversation_history(
         &self,
-        enhanced_result: &crate::models::EnhancedAnalysisResult,
+        enhanced_result: &EnhancedAnalysisResult,
         input_sentence: &str,
         conversation_id: &str,
         conversation_manager: Arc<ConversationManager>,
@@ -313,7 +314,7 @@ impl SentenceAnalyzer {
 
     fn build_sentence_response(
         &self,
-        enhanced_result: crate::models::EnhancedAnalysisResult,
+        enhanced_result: EnhancedAnalysisResult,
         conversation_id: String,
         model: String,
     ) -> SentenceResponse {

@@ -2,11 +2,20 @@ use crate::app_log;
 use crate::endpoint_client::{check_endpoint_service_health, get_enhanced_endpoints};
 use crate::general_question_handler::handle_general_question;
 use crate::help_response_handler::handle_help_request;
+use crate::json_helper::sanitize_json;
+use crate::models::config::{load_analysis_config, load_models_config};
 use crate::models::providers::ModelProvider;
-use crate::models::EnhancedAnalysisResult;
+use crate::models::{
+    ConfigFile, Endpoint, EndpointParameter, EnhancedAnalysisResult, EnhancedEndpoint,
+};
 use crate::models::{MatchingInfo, MatchingStatus, MissingField, ParameterMatch, UsageInfo};
-use crate::progressive_matching::ProgressiveMatchingManager;
+use crate::progressive_matching::{
+    get_database_url, OngoingMatch, ParameterValue, ProgressiveMatchResult,
+    ProgressiveMatchingManager,
+};
+use crate::prompts::PromptManager;
 use crate::utils::email::validate_email;
+use crate::utils::token_calculator::EnhancedTokenCalculator;
 use crate::workflow::actions::classify_intent::classify_intent;
 use crate::workflow::classify_intent::IntentType;
 use crate::workflow::find_closest_endpoint::find_closest_endpoint;
@@ -17,6 +26,42 @@ use crate::workflow::{WorkflowConfig, WorkflowContext, WorkflowEngine};
 use async_trait::async_trait;
 use std::error::Error;
 use std::sync::Arc;
+
+// Helper function to avoid code duplication for path parameter handling
+fn add_path_parameters_to_list(
+    endpoint: &EnhancedEndpoint,
+    mut parameters: Vec<ParameterMatch>,
+) -> Result<(Vec<ParameterMatch>, Vec<EndpointParameter>), Box<dyn Error + Send + Sync>> {
+    // Create complete endpoint parameter list including path parameters
+    let mut all_endpoint_parameters = endpoint.parameters.clone();
+
+    // Add path parameters from endpoint
+    if let Ok(Some(path_params)) = extract_path_params_from_path(&endpoint.path) {
+        for (param_name, _) in path_params {
+            // Add to endpoint parameters if not exists
+            if !all_endpoint_parameters.iter().any(|p| p.name == param_name) {
+                all_endpoint_parameters.push(EndpointParameter {
+                    name: param_name.clone(),
+                    description: format!("URL path parameter: {}", param_name),
+                    semantic_value: None,
+                    alternatives: None,
+                    required: Some(true),
+                });
+            }
+
+            // Add to parameter matches if not exists
+            if !parameters.iter().any(|p| p.name == param_name) {
+                parameters.push(ParameterMatch {
+                    name: param_name.clone(),
+                    description: format!("URL path parameter: {}", param_name),
+                    value: None, // Will be filled from progressive data or remain None
+                });
+            }
+        }
+    }
+
+    Ok((parameters, all_endpoint_parameters))
+}
 
 // Enhanced configuration loading step that extends the existing workflow
 pub struct EnhancedConfigurationLoadingStep {
@@ -62,9 +107,9 @@ impl WorkflowStep for EnhancedConfigurationLoadingStep {
                         }
 
                         // Convert enhanced endpoints to regular endpoints for workflow compatibility
-                        let regular_endpoints: Vec<crate::models::Endpoint> = enhanced_endpoints
+                        let regular_endpoints: Vec<Endpoint> = enhanced_endpoints
                             .iter()
-                            .map(|e| crate::models::Endpoint {
+                            .map(|e| Endpoint {
                                 id: e.id.clone(),
                                 text: e.text.clone(),
                                 description: e.description.clone(),
@@ -72,7 +117,7 @@ impl WorkflowStep for EnhancedConfigurationLoadingStep {
                             })
                             .collect();
 
-                        context.endpoints_config = Some(crate::models::ConfigFile {
+                        context.endpoints_config = Some(ConfigFile {
                             endpoints: regular_endpoints,
                         });
 
@@ -96,7 +141,7 @@ impl WorkflowStep for EnhancedConfigurationLoadingStep {
         }
 
         // Load model configurations (existing functionality)
-        let models_config = crate::models::config::load_models_config().await?;
+        let models_config = load_models_config().await?;
         context.models_config = Some(models_config);
 
         Ok(())
@@ -123,7 +168,7 @@ impl WorkflowStep for JsonGenerationStep {
 
         // The sentence_to_json function should return usage info, but since it doesn't,
         // we need to estimate the tokens used in this step
-        let enhanced_calculator = crate::utils::token_calculator::EnhancedTokenCalculator::new();
+        let enhanced_calculator = EnhancedTokenCalculator::new();
         let step_usage = enhanced_calculator.calculate_usage(
             &context.sentence,
             "",
@@ -166,7 +211,7 @@ impl WorkflowStep for EndpointMatchingStep {
         context.matched_endpoint = Some(endpoint_result);
 
         // Estimate tokens for endpoint matching step
-        let enhanced_calculator = crate::utils::token_calculator::EnhancedTokenCalculator::new();
+        let enhanced_calculator = EnhancedTokenCalculator::new();
         let step_usage = enhanced_calculator.calculate_usage(
             &context.sentence,
             "",
@@ -191,6 +236,75 @@ impl WorkflowStep for EndpointMatchingStep {
     }
 }
 
+pub struct PathParameterExtractionStep;
+
+#[async_trait]
+impl WorkflowStep for PathParameterExtractionStep {
+    async fn execute(
+        &self,
+        context: &mut WorkflowContext,
+    ) -> Result<(), Box<dyn Error + Send + Sync>> {
+        app_log!(debug, "Step 3: Extracting path parameters");
+
+        let endpoint_id = context
+            .endpoint_id
+            .as_ref()
+            .ok_or("Endpoint ID not available")?
+            .clone();
+
+        let enhanced_endpoints = context
+            .enhanced_endpoints
+            .as_ref()
+            .ok_or("Enhanced endpoints not available")?;
+
+        let enhanced_endpoint = enhanced_endpoints
+            .iter()
+            .find(|e| &e.id == &endpoint_id)
+            .ok_or("Enhanced endpoint not found")?
+            .clone();
+
+        app_log!(debug, "Processing path: {}", enhanced_endpoint.path);
+
+        // Extract path parameters
+        let path_parameters = extract_path_params_from_path(&enhanced_endpoint.path)?;
+        app_log!(debug, "Path parameters found: {:?}", path_parameters);
+
+        // Initialize parameters with existing endpoint parameters
+        let mut parameters: Vec<EndpointParameter> = enhanced_endpoint.parameters.clone();
+
+        // Add path parameters that aren't already in the endpoint definition
+        if let Some(path_params) = path_parameters {
+            app_log!(
+                debug,
+                "Found {} path parameters to process",
+                path_params.len()
+            );
+            for (param_name, _param_placeholder) in path_params {
+                app_log!(debug, "Processing path parameter: {}", param_name);
+                if !parameters.iter().any(|p| p.name == param_name) {
+                    app_log!(debug, "Adding missing path parameter: {}", param_name);
+                    parameters.push(EndpointParameter {
+                        name: param_name.clone(),
+                        description: format!("URL path parameter: {}", param_name),
+                        semantic_value: None,
+                        alternatives: None,
+                        required: Some(true),
+                    });
+                } else {
+                    app_log!(debug, "Skipping existing path parameter: {}", param_name);
+                }
+            }
+        }
+
+        context.parameters = parameters;
+        Ok(())
+    }
+
+    fn name(&self) -> &'static str {
+        "path_parameter_extraction"
+    }
+}
+
 #[async_trait]
 impl WorkflowStep for FieldMatchingStep {
     async fn execute(
@@ -209,29 +323,18 @@ impl WorkflowStep for FieldMatchingStep {
         let semantic_results =
             match_fields_semantic(json_output, endpoint, context.provider.clone()).await?;
 
-        let parameters: Vec<crate::models::EndpointParameter> = endpoint
-            .parameters
-            .iter()
-            .map(|param| {
-                let semantic_value = semantic_results
-                    .iter()
-                    .find(|(name, _, _)| name == &param.name)
-                    .and_then(|(_, _, value)| value.clone());
-
-                crate::models::EndpointParameter {
-                    name: param.name.clone(),
-                    description: param.description.clone(),
-                    semantic_value,
-                    alternatives: param.alternatives.clone(),
-                    required: param.required,
-                }
-            })
-            .collect();
-
-        context.parameters = parameters;
+        // Update existing parameters (including path parameters added in previous step) with semantic values
+        for param in &mut context.parameters {
+            if let Some((_, _, value)) = semantic_results
+                .iter()
+                .find(|(name, _, _)| name == &param.name)
+            {
+                param.semantic_value = value.clone();
+            }
+        }
 
         // Estimate tokens for field matching step
-        let enhanced_calculator = crate::utils::token_calculator::EnhancedTokenCalculator::new();
+        let enhanced_calculator = EnhancedTokenCalculator::new();
         let step_usage = enhanced_calculator.calculate_usage(
             &context.sentence,
             "",
@@ -327,8 +430,6 @@ async fn try_actionable_analysis(
     email: &str,
     conversation_id: Option<String>,
 ) -> Result<EnhancedAnalysisResult, Box<dyn Error + Send + Sync>> {
-    // let model = provider.get_model_name().to_string();
-
     // Run the full workflow for actionable requests
     const ENHANCED_WORKFLOW_CONFIG: &str = r#"
 steps:
@@ -342,6 +443,11 @@ steps:
     retry:
       max_attempts: 2
       delay_ms: 500
+  - name: path_parameter_extraction  # NEW: Extract path parameters
+    enabled: true
+    retry:
+      max_attempts: 1
+      delay_ms: 0
   - name: json_generation    # Then extract parameters for the specific endpoint
     enabled: true
     retry:
@@ -368,6 +474,10 @@ steps:
                         email: email.to_string(),
                     }),
                 );
+            }
+            "path_parameter_extraction" => {
+                // NEW
+                engine.register_step(step_config, Arc::new(PathParameterExtractionStep));
             }
             "json_generation" => {
                 engine.register_step(step_config, Arc::new(JsonGenerationStep));
@@ -407,6 +517,7 @@ steps:
     // Build parameter matches from workflow results
     let parameter_matches: Vec<ParameterMatch> = context
         .parameters
+        .clone()
         .into_iter()
         .map(|param| ParameterMatch {
             name: param.name,
@@ -414,8 +525,9 @@ steps:
             value: param.semantic_value,
         })
         .collect();
+    let matching_info = MatchingInfo::compute(&parameter_matches, &context.parameters);
 
-    let matching_info = MatchingInfo::compute(&parameter_matches, &enhanced_endpoint.parameters);
+    // let matching_info = MatchingInfo::compute(&parameter_matches, &enhanced_endpoint.parameters);
     let user_prompt = matching_info.generate_user_prompt(&enhanced_endpoint.name);
 
     // If workflow didn't track tokens properly, estimate them based on the sentence and response
@@ -425,7 +537,7 @@ steps:
             "Workflow reported 0 output tokens, estimating output tokens"
         );
 
-        let enhanced_calculator = crate::utils::token_calculator::EnhancedTokenCalculator::new();
+        let enhanced_calculator = EnhancedTokenCalculator::new();
 
         // Use existing input tokens if available, otherwise estimate
         let estimated_input = if context.total_input_tokens > 0 {
@@ -544,9 +656,7 @@ pub async fn analyze_sentence_enhanced(
     }
     validate_email(email)?;
 
-    let analysis_config = crate::models::config::load_analysis_config()
-        .await
-        .unwrap_or_default();
+    let analysis_config = load_analysis_config().await.unwrap_or_default();
 
     app_log!(
         info,
@@ -566,7 +676,7 @@ pub async fn analyze_sentence_enhanced(
             conv_id
         );
 
-        if let Ok(db_url) = crate::progressive_matching::get_database_url() {
+        if let Ok(db_url) = get_database_url() {
             if let Ok(progressive_manager) = ProgressiveMatchingManager::new(&db_url).await {
                 // Check if there's an ongoing incomplete match
                 match progressive_manager.get_incomplete_match(conv_id).await {
@@ -682,7 +792,7 @@ pub async fn analyze_sentence_enhanced(
 async fn handle_progressive_followup(
     sentence: &str,
     conversation_id: &str,
-    ongoing_match: &crate::progressive_matching::OngoingMatch,
+    ongoing_match: &OngoingMatch,
     provider: Arc<dyn ModelProvider>,
     progressive_manager: &ProgressiveMatchingManager,
     api_url: &str,
@@ -786,14 +896,11 @@ async fn handle_progressive_followup(
 async fn extract_parameters_from_followup(
     sentence: &str,
     provider: Arc<dyn ModelProvider>,
-    endpoint_parameters: &[crate::models::EndpointParameter],
-) -> Result<
-    Vec<crate::progressive_matching::ParameterValue>,
-    Box<dyn std::error::Error + Send + Sync>,
-> {
+    endpoint_parameters: &[EndpointParameter],
+) -> Result<Vec<ParameterValue>, Box<dyn std::error::Error + Send + Sync>> {
     app_log!(info, "Extracting parameters from follow-up: '{}'", sentence);
 
-    let prompt_manager = crate::prompts::PromptManager::new().await?;
+    let prompt_manager = PromptManager::new().await?;
     let available_params: Vec<String> = endpoint_parameters
         .iter()
         .map(|p| format!("{}: {}", p.name, p.description))
@@ -806,11 +913,11 @@ async fn extract_parameters_from_followup(
         Some("v1"),
     )?;
 
-    let models_config = crate::models::config::load_models_config().await?;
+    let models_config = load_models_config().await?;
     let model_config = &models_config.default;
 
     let result = provider.generate(&prompt, model_config).await?;
-    let json_result = crate::json_helper::sanitize_json(&result.content)?;
+    let json_result = sanitize_json(&result.content)?;
 
     let mut parameters = Vec::new();
     let valid_param_names: Vec<&str> = endpoint_parameters
@@ -822,7 +929,7 @@ async fn extract_parameters_from_followup(
         for (key, value) in obj {
             if let Some(str_value) = value.as_str() {
                 if !str_value.trim().is_empty() && valid_param_names.contains(&key.as_str()) {
-                    parameters.push(crate::progressive_matching::ParameterValue {
+                    parameters.push(ParameterValue {
                         name: key.clone(),
                         value: str_value.trim().to_string(),
                         description: format!("User provided value for {key}"),
@@ -837,11 +944,11 @@ async fn extract_parameters_from_followup(
 
 // Helper functions for creating responses
 async fn create_complete_progressive_response(
-    endpoint: &crate::models::EnhancedEndpoint,
-    result: crate::progressive_matching::ProgressiveMatchResult,
+    endpoint: &EnhancedEndpoint,
+    result: ProgressiveMatchResult,
     conversation_id: &Option<String>,
 ) -> Result<EnhancedAnalysisResult, Box<dyn Error + Send + Sync>> {
-    let parameters: Vec<ParameterMatch> = result
+    let base_parameters: Vec<ParameterMatch> = result
         .matched_parameters
         .into_iter()
         .map(|param| ParameterMatch {
@@ -851,16 +958,9 @@ async fn create_complete_progressive_response(
         })
         .collect();
 
-    let matching_info = MatchingInfo {
-        status: MatchingStatus::Complete,
-        total_required_fields: parameters.len(),
-        mapped_required_fields: parameters.len(),
-        total_optional_fields: 0,
-        mapped_optional_fields: 0,
-        completion_percentage: 100.0,
-        missing_required_fields: vec![],
-        missing_optional_fields: vec![],
-    };
+    let (parameters, all_endpoint_parameters) =
+        add_path_parameters_to_list(endpoint, base_parameters)?;
+    let matching_info = MatchingInfo::compute(&parameters, &all_endpoint_parameters);
 
     let usage_info = UsageInfo {
         input_tokens: 50,
@@ -898,11 +998,11 @@ async fn create_complete_progressive_response(
 }
 
 async fn create_partial_progressive_response(
-    endpoint: &crate::models::EnhancedEndpoint,
-    result: crate::progressive_matching::ProgressiveMatchResult,
+    endpoint: &EnhancedEndpoint,
+    result: ProgressiveMatchResult,
     conversation_id: &Option<String>,
 ) -> Result<EnhancedAnalysisResult, Box<dyn Error + Send + Sync>> {
-    let parameters: Vec<ParameterMatch> = result
+    let base_parameters: Vec<ParameterMatch> = result
         .matched_parameters
         .into_iter()
         .map(|param| ParameterMatch {
@@ -911,6 +1011,9 @@ async fn create_partial_progressive_response(
             value: Some(param.value),
         })
         .collect();
+
+    let (parameters, all_endpoint_parameters) =
+        add_path_parameters_to_list(endpoint, base_parameters)?;
 
     let missing_fields: Vec<MissingField> = result
         .missing_parameters
@@ -923,8 +1026,8 @@ async fn create_partial_progressive_response(
 
     let matching_info = MatchingInfo {
         status: MatchingStatus::Partial,
-        total_required_fields: parameters.len() + missing_fields.len(),
-        mapped_required_fields: parameters.len(),
+        total_required_fields: all_endpoint_parameters.len(),
+        mapped_required_fields: parameters.iter().filter(|p| p.value.is_some()).count(),
         total_optional_fields: 0,
         mapped_optional_fields: 0,
         completion_percentage: result.completion_percentage,
@@ -1054,7 +1157,7 @@ async fn create_fallback_response(
 
 async fn create_help_response(
     sentence: &str,
-    enhanced_endpoints: &[crate::models::EnhancedEndpoint],
+    enhanced_endpoints: &[EnhancedEndpoint],
     provider: Arc<dyn ModelProvider>,
     conversation_id: Option<String>,
 ) -> Result<EnhancedAnalysisResult, Box<dyn Error + Send + Sync>> {
@@ -1159,3 +1262,30 @@ async fn create_general_response(
         intent: IntentType::GeneralQuestion,
     })
 }
+
+fn extract_path_params_from_path(
+    path: &str,
+) -> Result<Option<std::collections::HashMap<String, String>>, Box<dyn Error + Send + Sync>> {
+    use std::collections::HashMap;
+
+    let mut params = HashMap::new();
+
+    // Find all {param_name} patterns in the path
+    let re = regex::Regex::new(r"\{([^}]+)\}").unwrap();
+
+    for cap in re.captures_iter(path) {
+        if let Some(param_name) = cap.get(1) {
+            params.insert(
+                param_name.as_str().to_string(),
+                "{{extracted_from_path}}".to_string(),
+            );
+        }
+    }
+
+    if params.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(params))
+    }
+}
+

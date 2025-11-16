@@ -84,7 +84,7 @@ impl ModelProvider for CohereProvider {
             app_log!(
                 error,
                 "Cohere request failed with status {}: {}",
-                status,
+                status.as_u16(),
                 error_text
             );
             return Err(format!("Cohere request failed: {status} - {error_text}").into());

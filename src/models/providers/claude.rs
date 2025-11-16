@@ -76,7 +76,7 @@ impl ModelProvider for ClaudeProvider {
             app_log!(
                 error,
                 "Claude request failed with status {}: {}",
-                status,
+                status.as_u16(),
                 error_text
             );
             return Err(format!("Claude request failed: {status} - {error_text}").into());

@@ -1,47 +1,17 @@
 pub mod endpoint {
     tonic::include_proto!("endpoint");
 }
+use crate::app_log;
 use crate::models::config::load_endpoint_client_config;
 use endpoint::endpoint_service_client::EndpointServiceClient;
 use endpoint::{Endpoint, GetApiGroupsRequest};
 use std::error::Error;
 use tonic::transport::Channel;
-use crate::app_log;
 /// Get the default API URL from configuration if not provided via CLI
 pub async fn get_default_api_url() -> Result<String, Box<dyn Error + Send + Sync>> {
     let endpoint_client_config = load_endpoint_client_config().await?;
     Ok(endpoint_client_config.default_address)
 }
-
-// Convert gRPC Endpoint to our internal Endpoint structure
-// pub fn convert_remote_endpoints(
-//     api_groups: Vec<endpoint::ApiGroup>,
-// ) -> Vec<crate::models::Endpoint> {
-//     api_groups
-//         .into_iter()
-//         .flat_map(|group| {
-//             group
-//                 .endpoints
-//                 .into_iter()
-//                 .map(move |re| crate::models::Endpoint {
-//                     id: re.id,
-//                     text: re.text,
-//                     description: re.description,
-//                     parameters: re
-//                         .parameters
-//                         .into_iter()
-//                         .map(|rp| crate::models::EndpointParameter {
-//                             name: rp.name,
-//                             description: rp.description,
-//                             required: Some(rp.required == "true"),
-//                             alternatives: Some(rp.alternatives),
-//                             semantic_value: None,
-//                         })
-//                         .collect(),
-//                 })
-//         })
-//         .collect()
-// }
 
 /// Check if the endpoint service is available
 pub async fn check_endpoint_service_health(
@@ -115,7 +85,11 @@ pub async fn get_default_endpoints(
 
     // Collect all API groups from the stream
     while let Some(response) = stream.message().await? {
-        app_log!(info, "Received batch of {} API groups", response.api_groups.len());
+        app_log!(
+            info,
+            "Received batch of {} API groups",
+            response.api_groups.len()
+        );
         api_groups.extend(response.api_groups);
     }
 
@@ -125,16 +99,24 @@ pub async fn get_default_endpoints(
         .flat_map(|group| group.endpoints.clone())
         .collect();
 
-    app_log!(info, 
+    app_log!(
+        info,
         "Successfully fetched {} endpoints from {} API groups",
         all_endpoints.len(),
         api_groups.len()
     );
 
     if all_endpoints.is_empty() {
-        app_log!(error, "Remote service returned 0 endpoints for email: {}", email);
+        app_log!(
+            error,
+            "Remote service returned 0 endpoints for email: {}",
+            email
+        );
         app_log!(error, "This means either:");
-        app_log!(error, "  1. No endpoints are configured for this user account");
+        app_log!(
+            error,
+            "  1. No endpoints are configured for this user account"
+        );
         app_log!(error, "  2. The user email is not registered in the system");
         app_log!(error, "  3. The endpoint service has no data available");
 

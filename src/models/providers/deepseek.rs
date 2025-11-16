@@ -1,9 +1,9 @@
 // src/models/providers/deepseek.rs
 use super::{GenerationResult, ModelConfig, ModelProvider, ProviderConfig, TokenCounter};
+use crate::app_log;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
-use crate::app_log;
 
 pub struct DeepSeekProvider {
     api_key: String,
@@ -50,7 +50,10 @@ struct Usage {
 impl DeepSeekProvider {
     pub fn new(config: &ProviderConfig) -> Self {
         if !config.enabled {
-            app_log!(debug, "Creating DeepSeek provider, but it's disabled in config");
+            app_log!(
+                debug,
+                "Creating DeepSeek provider, but it's disabled in config"
+            );
         }
 
         Self {
@@ -94,9 +97,11 @@ impl ModelProvider for DeepSeekProvider {
         if !response.status().is_success() {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
-            app_log!(error, 
+            app_log!(
+                error,
                 "DeepSeek request failed with status {}: {}",
-                status, error_text
+                status.as_u16(),
+                error_text
             );
             return Err(format!("DeepSeek request failed: {status} - {error_text}").into());
         }
