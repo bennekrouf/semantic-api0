@@ -1,5 +1,4 @@
 // src/main.rs - Updated with helpers and dead code removed
-mod analyze_sentence;
 mod cli;
 mod comparison_test;
 mod conversation;
@@ -14,7 +13,9 @@ mod prompts;
 mod sentence_analysis;
 mod sentence_service;
 mod utils;
-mod workflow;
+
+pub mod analysis;
+pub mod workflow;
 
 use crate::models::config::load_models_config;
 use crate::models::providers::{create_provider, ModelProvider, ProviderConfig};

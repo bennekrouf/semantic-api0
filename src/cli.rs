@@ -1,13 +1,14 @@
+use crate::analysis::analyze_sentence_enhanced::analyze_sentence_enhanced;
 // src/cli.rs - Updated to use only Cohere
+use crate::app_log;
 use clap::Parser;
 use std::{error::Error, sync::Arc};
-use crate::app_log;
 
 use crate::comparison_test::run_model_comparison;
 use crate::endpoint_client::get_default_api_url;
+use crate::models::providers::ModelProvider;
 use crate::utils::email::validate_email;
 use crate::workflow::classify_intent::IntentType;
-use crate::{analyze_sentence::analyze_sentence_enhanced, models::providers::ModelProvider};
 
 pub fn display_custom_help() {
     println!(
@@ -198,7 +199,8 @@ pub async fn handle_cli(
                     cli.api = Some(url);
                 }
                 Err(e) => {
-                    app_log!(info, 
+                    app_log!(
+                        info,
                         "Could not get default API URL, using local endpoints: {}",
                         e
                     );

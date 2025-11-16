@@ -1,5 +1,5 @@
+use crate::analysis::analyze_sentence_enhanced::analyze_sentence_enhanced;
 // src/comparison_test.rs
-use crate::analyze_sentence::analyze_sentence_enhanced;
 use crate::app_log;
 use crate::models::providers::{create_provider, ModelProvider, ProviderConfig};
 use serde::{Deserialize, Serialize};
