@@ -133,23 +133,4 @@ impl PromptManager {
 
         template.replace("{sentence}", sentence)
     }
-
-    pub fn format_sentence_to_json_v2(
-        &self,
-        sentence: &str,
-        endpoint_description: &str,
-        required_params: &str,
-        optional_params: &str,
-        version: Option<&str>,
-    ) -> String {
-        let template = self
-            .get_prompt("sentence_to_json", version)
-            .unwrap_or_default();
-
-        template
-            .replace("{sentence}", sentence)
-            .replace("{endpoint_description}", endpoint_description)
-            .replace("{required_params}", required_params)
-            .replace("{optional_params}", optional_params)
-    }
 }

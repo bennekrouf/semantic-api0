@@ -68,19 +68,3 @@ pub fn create_provider(
         None
     }
 }
-
-pub struct ProviderWithTokens<T> {
-    inner: T,
-    counter: TokenCounter,
-    model_name: String,
-}
-
-impl<T> ProviderWithTokens<T> {
-    pub fn new(inner: T, model_name: String) -> Self {
-        Self {
-            inner,
-            counter: TokenCounter::new(),
-            model_name,
-        }
-    }
-}

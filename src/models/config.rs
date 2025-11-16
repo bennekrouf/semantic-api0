@@ -1,20 +1,14 @@
 // src/models/config.rs
+use crate::app_log;
 use crate::models::ModelsConfig;
 use serde::Deserialize;
 use std::error::Error;
-use crate::app_log;
 
 use std::env;
 
 fn get_config_path() -> String {
     env::var("CONFIG_PATH").unwrap_or_else(|_| "config.yaml".to_string())
 }
-
-#[derive(Debug, Deserialize, Clone)]
-pub struct Providers {}
-
-#[derive(Debug, Deserialize, Clone)]
-pub struct GrpcConfig {}
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct ServerConfig {
@@ -50,9 +44,6 @@ pub struct Config {
     pub analysis: Option<AnalysisConfig>, // Optional for backward compatibility
 }
 
-#[derive(Debug, Deserialize, Clone, Default)]
-pub struct DebugConfig {}
-
 pub async fn load_models_config() -> Result<ModelsConfig, Box<dyn Error + Send + Sync>> {
     let config_path = get_config_path();
     let config_str = tokio::fs::read_to_string(&config_path).await?;
@@ -83,8 +74,16 @@ pub async fn load_endpoint_client_config(
     let config_str = tokio::fs::read_to_string(&config_path).await?;
     let config: Config = serde_yaml::from_str(&config_str)?;
 
-    app_log!(debug, "Loaded endpoint client configuration from: {}", config_path);
-    app_log!(debug, "Endpoint client config: {:#?}", config.endpoint_client);
+    app_log!(
+        debug,
+        "Loaded endpoint client configuration from: {}",
+        config_path
+    );
+    app_log!(
+        debug,
+        "Endpoint client config: {:#?}",
+        config.endpoint_client
+    );
 
     Ok(config.endpoint_client)
 }

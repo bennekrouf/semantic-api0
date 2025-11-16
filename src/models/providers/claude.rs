@@ -1,9 +1,9 @@
 // src/models/providers/claude.rs
 use super::{GenerationResult, ModelConfig, ModelProvider, ProviderConfig, TokenCounter};
-use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
-use std::error::Error;
 use crate::app_log;
+use async_trait::async_trait;
+use serde::Serialize;
+use std::error::Error;
 
 pub struct ClaudeProvider {
     api_key: String,
@@ -23,22 +23,13 @@ struct Message {
     content: String,
 }
 
-#[derive(Debug, Deserialize)]
-struct ClaudeResponse {
-    content: Vec<ContentItem>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ContentItem {
-    // #[serde(rename = "type")]
-    // content_type: String,
-    text: String,
-}
-
 impl ClaudeProvider {
     pub fn new(config: &ProviderConfig) -> Self {
         if !config.enabled {
-            app_log!(debug, "Creating Claude provider, but it's disabled in config");
+            app_log!(
+                debug,
+                "Creating Claude provider, but it's disabled in config"
+            );
         }
 
         Self {
@@ -82,9 +73,11 @@ impl ModelProvider for ClaudeProvider {
         if !response.status().is_success() {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
-            app_log!(error, 
+            app_log!(
+                error,
                 "Claude request failed with status {}: {}",
-                status, error_text
+                status,
+                error_text
             );
             return Err(format!("Claude request failed: {status} - {error_text}").into());
         }

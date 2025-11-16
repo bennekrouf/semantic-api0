@@ -1159,26 +1159,3 @@ async fn create_general_response(
         intent: IntentType::GeneralQuestion,
     })
 }
-
-pub fn create_default_matching_info() -> MatchingInfo {
-    MatchingInfo {
-        status: MatchingStatus::Complete,
-        total_required_fields: 0,
-        mapped_required_fields: 0,
-        total_optional_fields: 0,
-        mapped_optional_fields: 0,
-        completion_percentage: 100.0,
-        missing_required_fields: vec![],
-        missing_optional_fields: vec![],
-    }
-}
-
-pub fn create_usage_info(input: u32, output: u32, model: String, estimated: bool) -> UsageInfo {
-    UsageInfo {
-        input_tokens: input,
-        output_tokens: output,
-        total_tokens: input + output,
-        model,
-        estimated,
-    }
-}

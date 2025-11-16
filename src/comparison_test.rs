@@ -1,5 +1,6 @@
 // src/comparison_test.rs
 use crate::analyze_sentence::analyze_sentence_enhanced;
+use crate::app_log;
 use crate::models::providers::{create_provider, ModelProvider, ProviderConfig};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -7,86 +8,6 @@ use std::env;
 use std::error::Error;
 use std::sync::Arc;
 use tokio::time::{Duration, Instant};
-use crate::app_log;
-
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
-pub struct EnhancedTestConfig {
-    pub models: Vec<String>,
-    pub prompt_versions: Vec<String>,
-    pub iterations: u32,
-    pub test_sentences: Vec<TestSentence>, // Multiple test sentences with expected intents
-    pub conversation_id: String,
-    pub email: String,
-    pub api_url: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct TestSentence {
-    pub text: String,
-    pub expected_intent: String, // "actionable", "general", or "help"
-    pub language: String,        // "en", "fr", "es", etc.
-    pub description: String,
-}
-
-#[derive(Debug, Serialize, Clone)]
-pub struct EnhancedTestResult {
-    pub model: String,
-    pub prompt_version: String,
-    pub iteration: u32,
-    pub test_sentence: TestSentence,
-    pub detected_intent: Option<String>,
-    pub intent_correct: bool,
-    pub endpoint_matched: Option<String>,
-    pub parameters_extracted: HashMap<String, Option<String>>,
-    pub response_content: Option<String>, // For help/general responses
-    pub response_time_ms: u64,
-    pub error_occurred: bool,
-    pub error_message: Option<String>,
-    pub total_input_tokens: u32,
-    pub total_output_tokens: u32,
-}
-
-#[derive(Debug, Serialize)]
-pub struct EnhancedComparisonSummary {
-    pub model: String,
-    pub prompt_version: String,
-    pub total_runs: u32,
-    pub error_count: u32,
-    pub intent_accuracy: IntentAccuracy,
-    pub avg_response_time_ms: f64,
-    pub avg_input_tokens: f64,
-    pub avg_output_tokens: f64,
-    pub language_performance: HashMap<String, LanguagePerformance>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct IntentAccuracy {
-    pub overall_accuracy: f32,
-    pub actionable_accuracy: f32,
-    pub general_accuracy: f32,
-    pub help_accuracy: f32,
-    pub confusion_matrix: ConfusionMatrix,
-}
-
-#[derive(Debug, Serialize)]
-pub struct ConfusionMatrix {
-    // Rows = actual, Columns = predicted
-    pub actionable_to_actionable: u32,
-    pub actionable_to_general: u32,
-    pub actionable_to_help: u32,
-    pub general_to_actionable: u32,
-    pub general_to_general: u32,
-    pub general_to_help: u32,
-    pub help_to_actionable: u32,
-    pub help_to_general: u32,
-    pub help_to_help: u32,
-}
-
-#[derive(Debug, Serialize)]
-pub struct LanguagePerformance {
-    pub accuracy: f32,
-    pub sample_count: u32,
-}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TestConfig {
@@ -177,7 +98,8 @@ impl ModelComparisonTester {
     ) -> Result<Vec<ComparisonSummary>, Box<dyn Error + Send + Sync>> {
         let mut all_results = Vec::new();
 
-        app_log!(info, 
+        app_log!(
+            info,
             "Starting model comparison test with {} iterations",
             self.config.iterations
         );
@@ -214,7 +136,8 @@ impl ModelComparisonTester {
         for iteration in 1..=self.config.iterations {
             let start_time = Instant::now();
 
-            app_log!(info, 
+            app_log!(
+                info,
                 "Calling analyze_sentence_enhanced with sentence: '{}'",
                 &self.config.sentence[..50]
             );
@@ -229,7 +152,8 @@ impl ModelComparisonTester {
             .await
             {
                 Ok(result) => {
-                    app_log!(info, 
+                    app_log!(
+                        info,
                         "analyze_sentence_enhanced succeeded for iteration {}",
                         iteration
                     );
@@ -262,7 +186,8 @@ impl ModelComparisonTester {
                     });
                 }
                 Err(e) => {
-                    app_log!(error, 
+                    app_log!(
+                        error,
                         "analyze_sentence_enhanced failed for iteration {}: {}",
                         iteration,
                         e
@@ -285,9 +210,13 @@ impl ModelComparisonTester {
             }
 
             if iteration % 5 == 0 {
-                app_log!(info, 
+                app_log!(
+                    info,
                     "Completed {}/{} iterations for {} {}",
-                    iteration, self.config.iterations, model_name, prompt_version
+                    iteration,
+                    self.config.iterations,
+                    model_name,
+                    prompt_version
                 );
             }
         }
